@@ -927,6 +927,27 @@ function populateVendorFilter() {
     years.map(y => `<option value="${y}" ${y == curY ? 'selected' : ''}>${y}</option>`).join('');
 }
 
+// 統一日期顯示格式：yyyy/MM/dd
+function fmtDate(r) {
+  const d = String(r.date || '');
+  // 已是 yyyy/MM/dd
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(d)) return d;
+  // M/D 格式
+  const m = d.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (m) return r.year + '/' + String(m[1]).padStart(2,'0') + '/' + String(m[2]).padStart(2,'0');
+  return d;
+}
+
+// 統一轉成 yyyyMMDD 整數供排序用
+function toSortInt(r) {
+  const d = String(r.date || '');
+  const m1 = d.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (m1) return parseInt(m1[1])*10000 + parseInt(m1[2])*100 + parseInt(m1[3]);
+  const m2 = d.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (m2) return (Number(r.year)||0)*10000 + parseInt(m2[1])*100 + parseInt(m2[2]);
+  return (Number(r.year)||0)*10000;
+}
+
 function applyFilter() {
   const search = document.getElementById('searchInput').value.toLowerCase();
   const vendor = document.getElementById('filterVendor').value;
@@ -937,19 +958,7 @@ function applyFilter() {
     if (search && !(r.vendor+r.issue+r.summary+r.date).toLowerCase().includes(search)) return false;
     return true;
   }).slice().sort((a,b) => {
-    // 統一把 year+date 合成 yyyyMMDD 整數排序（降序 = 新的在前）
-    function toInt(r) {
-      const y = Number(r.year) || 0;
-      const d = String(r.date || '');
-      // 已是 yyyy/MM/dd
-      const m1 = d.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
-      if (m1) return parseInt(m1[1])*10000 + parseInt(m1[2])*100 + parseInt(m1[3]);
-      // M/D 格式，搭配 year 欄位
-      const m2 = d.match(/^(\d{1,2})\/(\d{1,2})$/);
-      if (m2) return y*10000 + parseInt(m2[1])*100 + parseInt(m2[2]);
-      return y*10000;
-    }
-    const diff = toInt(b) - toInt(a);
+    const diff = toSortInt(b) - toSortInt(a);
     if (diff !== 0) return diff;
     return Number(b.seq) - Number(a.seq);
   });
@@ -969,7 +978,7 @@ function renderMobileCards() {
         <span class="rc-seq">${r.seq}</span>
         <span class="rc-vendor">${r.vendor}</span>
         ${!r.isEmbedded ? '<span class="rc-new">新</span>' : ''}
-        <span class="rc-date">${String(r.date).includes('/') && String(r.date).length > 5 ? r.date : r.year+'/'+r.date}</span>
+        <span class="rc-date">${fmtDate(r)}</span>
       </div>
       <div class="rc-body">
         <div class="rc-issue">${r.issue}</div>
@@ -985,7 +994,7 @@ function renderDesktopTable() {
       <td class="tc">${r.seq}${!r.isEmbedded?'<br><span style="font-size:9px;color:var(--accent)">新</span>':''}</td>
       <td style="font-weight:500;color:var(--navy)">${r.vendor}</td>
       <td class="tc">${r.year}</td>
-      <td class="tc">${String(r.date).includes("/")&&String(r.date).length>5?r.date:r.year+"/"+r.date}</td>
+      <td class="tc">${fmtDate(r)}</td>
       <td style="white-space:pre-wrap;font-size:12px">${r.issue}</td>
       <td><div class="td-s" onclick="this.classList.toggle('exp');event.stopPropagation()">${r.summary||''}</div></td>
       <td class="tc"><button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();editFromList(${r.seq})" style="padding:3px 7px">✏️</button></td>
@@ -1170,4 +1179,4 @@ function buildXlsx(recs) {
 init();
 </script>
 </body>
-</html>
+</html>ㄒ
