@@ -937,21 +937,20 @@ function applyFilter() {
     if (search && !(r.vendor+r.issue+r.summary+r.date).toLowerCase().includes(search)) return false;
     return true;
   }).slice().sort((a,b) => {
-    // 統一依 year 降序 → date 降序 → seq 降序
-    if (Number(b.year) !== Number(a.year)) return Number(b.year) - Number(a.year);
-    // date 格式：yyyy/MM/dd 或 M/D，統一轉成可比較的數字 MMDD
-    function dateVal(r) {
+    // 統一把 year+date 合成 yyyyMMDD 整數排序（降序 = 新的在前）
+    function toInt(r) {
+      const y = Number(r.year) || 0;
       const d = String(r.date || '');
-      // yyyy/MM/dd 格式
-      const m1 = d.match(/\d{4}\/(\d{1,2})\/(\d{1,2})/);
-      if (m1) return parseInt(m1[1]) * 100 + parseInt(m1[2]);
-      // M/D 格式
+      // 已是 yyyy/MM/dd
+      const m1 = d.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+      if (m1) return parseInt(m1[1])*10000 + parseInt(m1[2])*100 + parseInt(m1[3]);
+      // M/D 格式，搭配 year 欄位
       const m2 = d.match(/^(\d{1,2})\/(\d{1,2})$/);
-      if (m2) return parseInt(m2[1]) * 100 + parseInt(m2[2]);
-      return 0;
+      if (m2) return y*10000 + parseInt(m2[1])*100 + parseInt(m2[2]);
+      return y*10000;
     }
-    const dv = dateVal(b) - dateVal(a);
-    if (dv !== 0) return dv;
+    const diff = toInt(b) - toInt(a);
+    if (diff !== 0) return diff;
     return Number(b.seq) - Number(a.seq);
   });
   document.getElementById('filterCount').textContent = `共 ${filteredRecords.length} 筆`;
