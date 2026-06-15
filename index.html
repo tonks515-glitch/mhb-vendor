@@ -315,7 +315,7 @@ textarea{resize:vertical;min-height:90px}
     <span class="rec-count" id="filterCount"></span>
   </div>
   <div class="records" id="mobileCards"></div>
-  <div class="dt-wrap">
+  <div class="dt-wrap" id="dtWrap">
     <table class="dt">
       <thead><tr>
         <th style="width:50px">#</th><th style="width:110px">廠商</th>
@@ -477,7 +477,8 @@ function syncFromSheets() {
     }
     // Sheets records replace embedded
     const sheetRecs = (data.records || []).map(r => ({
-      seq: Number(r.seq), vendor: r.vendor, year: Number(r.year)||r.year, date: String(r.date),
+      seq: Number(r.seq), vendor: r.vendor, year: Number(r.year)||r.year,
+      date: (()=>{ const d=String(r.date||''); if(d.includes('T')||d.includes('-')){const dt=new Date(d);return isNaN(dt)?d:`${dt.getMonth()+1}/${dt.getDate()}`;}return d; })(),
       issue: r.issue, summary: r.summary,
       photos: r.photos || [], isEmbedded: false
     }));
@@ -573,7 +574,16 @@ function switchTab(name) {
   document.getElementById('pane-' + name).classList.add('active');
   const btn = document.getElementById('tab-' + name);
   if (btn) btn.classList.add('active');
-  if (name === 'list') { populateVendorFilter(); applyFilter(); }
+  if (name === 'list') {
+    populateVendorFilter();
+    applyFilter();
+    // 強制依螢幕寬度顯示正確版面
+    const isDesktop = window.innerWidth >= 768;
+    const dtWrap = document.getElementById('dtWrap');
+    const mCards = document.getElementById('mobileCards');
+    if (dtWrap) dtWrap.style.display = isDesktop ? 'block' : 'none';
+    if (mCards) mCards.style.display = isDesktop ? 'none' : 'flex';
+  }
   if (name === 'stats') renderStats();
   if (name === 'settings') { renderVendorAdmin(); }
 }
@@ -925,7 +935,7 @@ function applyFilter() {
     if (year && String(r.year) !== year) return false;
     if (search && !(r.vendor+r.issue+r.summary+r.date).toLowerCase().includes(search)) return false;
     return true;
-  }).slice().reverse();
+  }).slice().sort((a,b) => Number(b.seq) - Number(a.seq));
   document.getElementById('filterCount').textContent = `共 ${filteredRecords.length} 筆`;
   const ft = document.getElementById('filterTotal');
   if (ft) ft.textContent = filteredRecords.length;
