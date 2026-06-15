@@ -477,10 +477,9 @@ function syncFromSheets() {
     }
     // Sheets records replace embedded
     const sheetRecs = (data.records || []).map(r => ({
-      seq: Number(r.seq), vendor: r.vendor, year: Number(r.year)||r.year,
-      date: (()=>{ const d=String(r.date||''); if(d.includes('T')||d.includes('-')){const dt=new Date(d);return isNaN(dt)?d:`${dt.getMonth()+1}/${dt.getDate()}`;}return d; })(),
+      seq: Number(r.seq), vendor: r.vendor, year: Number(r.year)||r.year, date: String(r.date||''),
       issue: r.issue, summary: r.summary,
-      photos: r.photos || [], isEmbedded: false
+      photos: r.photos || [], created_at: r.created_at || '', isEmbedded: false
     }));
 
     if (sheetRecs.length > 0) {
@@ -864,7 +863,7 @@ async function saveRecord() {
     // ADD
     result = await gasPost('addRecord', { vendor, year, date, issue, summary, photos: pendingPhotos });
     if (result.ok) {
-      records.push({ seq: Number(result.seq), vendor, year, date, issue, summary, photos: pendingPhotos, isEmbedded: false });
+      records.push({ seq: Number(result.seq), vendor, year, date, issue, summary, photos: pendingPhotos, created_at: result.created_at || new Date().toISOString(), isEmbedded: false });
       showToast('✅ 記錄已新增並同步到 Sheets！');
     } else {
       showToast('❌ 新增失敗：' + (result.error || '未連線，請設定GAS網址'));
@@ -935,7 +934,14 @@ function applyFilter() {
     if (year && String(r.year) !== year) return false;
     if (search && !(r.vendor+r.issue+r.summary+r.date).toLowerCase().includes(search)) return false;
     return true;
-  }).slice().sort((a,b) => Number(b.seq) - Number(a.seq));
+  }).slice().sort((a,b) => {
+    // 有 created_at 的（新增記錄）排在前面，依時間降序
+    if (a.created_at && b.created_at) return b.created_at.localeCompare(a.created_at);
+    if (a.created_at && !b.created_at) return -1;
+    if (!a.created_at && b.created_at) return 1;
+    // 兩者都沒有 created_at（歷史資料），依 seq 降序
+    return Number(b.seq) - Number(a.seq);
+  });
   document.getElementById('filterCount').textContent = `共 ${filteredRecords.length} 筆`;
   const ft = document.getElementById('filterTotal');
   if (ft) ft.textContent = filteredRecords.length;
