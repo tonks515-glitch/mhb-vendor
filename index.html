@@ -1025,7 +1025,24 @@ function openModal(seq) {
   document.getElementById('detailModal').classList.add('open');
 }
 function closeModal() { document.getElementById('detailModal').classList.remove('open'); currentModalSeq = null; }
-function editFromModal() { closeModal(); editFromList(currentModalSeq); }
+function editFromModal() {
+  const seq = currentModalSeq;
+  closeModal();
+  // 延遲確保 modal 完全關閉後再切換
+  setTimeout(() => {
+    editFromList(seq);
+    // 強制切到新增 tab
+    document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('pane-add').classList.add('active');
+    document.getElementById('tab-add').classList.add('active');
+    window.scrollTo({top:0, behavior:'smooth'});
+    // 橘色邊框提示用戶表單已開啟
+    const card = document.getElementById('formCard');
+    card.style.boxShadow = '0 0 0 3px var(--accent)';
+    setTimeout(() => { card.style.boxShadow = ''; }, 2000);
+  }, 150);
+}
 function editFromList(seq) {
   const r = records.find(r => String(r.seq) === String(seq));
   if (!r) return;
@@ -1041,7 +1058,14 @@ function editFromList(seq) {
   document.getElementById('editBadge').style.display = 'inline-flex';
   document.getElementById('formTitle').textContent = `✏️ 編輯記錄 #${seq}`;
   updateIssueChips(); updateTemplates();
-  switchTab('add'); window.scrollTo({top:0,behavior:'smooth'});
+  switchTab('add');
+  // 手機：確保頁面滾到最上方並高亮提示
+  setTimeout(() => {
+    window.scrollTo({top:0, behavior:'smooth'});
+    document.getElementById('formCard').style.transition = 'box-shadow 0.3s';
+    document.getElementById('formCard').style.boxShadow = '0 0 0 3px var(--accent)';
+    setTimeout(() => { document.getElementById('formCard').style.boxShadow = ''; }, 1500);
+  }, 100);
 }
 async function deleteRecord() {
   if (!currentModalSeq) return;
