@@ -477,7 +477,7 @@ function syncFromSheets() {
     }
     // Sheets records replace embedded
     const sheetRecs = (data.records || []).map(r => ({
-      seq: r.seq, vendor: r.vendor, year: r.year, date: r.date,
+      seq: Number(r.seq), vendor: r.vendor, year: Number(r.year)||r.year, date: String(r.date),
       issue: r.issue, summary: r.summary,
       photos: r.photos || [], isEmbedded: false
     }));
@@ -491,7 +491,10 @@ function syncFromSheets() {
       setSyncStatus('ok', `Sheets 尚無記錄，顯示歷史資料共 ${records.length} 筆`);
     }
     updateHeader();
-    // Also fetch vendors from Sheets
+    if (document.getElementById('pane-list').classList.contains('active')) {
+      populateVendorFilter();
+      applyFilter();
+    }
     fetchVendors();
   }, err => {
     isSyncing = false;
@@ -853,7 +856,7 @@ async function saveRecord() {
     // ADD
     result = await gasPost('addRecord', { vendor, year, date, issue, summary, photos: pendingPhotos });
     if (result.ok) {
-      records.push({ seq: result.seq, vendor, year, date, issue, summary, photos: pendingPhotos });
+      records.push({ seq: Number(result.seq), vendor, year, date, issue, summary, photos: pendingPhotos, isEmbedded: false });
       showToast('✅ 記錄已新增並同步到 Sheets！');
     } else {
       showToast('❌ 新增失敗：' + (result.error || '未連線，請設定GAS網址'));
@@ -979,7 +982,7 @@ function openModal(seq) {
 function closeModal() { document.getElementById('detailModal').classList.remove('open'); currentModalSeq = null; }
 function editFromModal() { closeModal(); editFromList(currentModalSeq); }
 function editFromList(seq) {
-  const r = records.find(r => r.seq === seq);
+  const r = records.find(r => String(r.seq) === String(seq));
   if (!r) return;
   populateVendorSelectBox();
   const vsel = document.getElementById('f-vendor');
@@ -997,13 +1000,13 @@ function editFromList(seq) {
 }
 async function deleteRecord() {
   if (!currentModalSeq) return;
-  const r = records.find(r => r.seq === currentModalSeq);
+  const r = records.find(r => String(r.seq) === String(currentModalSeq));
   if (!r) return;
   if (r.isEmbedded) { showToast('⚠️ 歷史資料不可刪除'); return; }
   if (!confirm(`確定刪除 #${r.seq} ${r.vendor} 的記錄？`)) return;
   const result = await gasPost('deleteRecord', { seq: r.seq });
   if (result.ok) {
-    records = records.filter(x => x.seq !== currentModalSeq);
+    records = records.filter(x => String(x.seq) !== String(currentModalSeq));
     updateHeader(); closeModal();
     if (document.getElementById('pane-list').classList.contains('active')) applyFilter();
     showToast('🗑️ 記錄已刪除');
