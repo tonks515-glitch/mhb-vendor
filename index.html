@@ -479,7 +479,9 @@ function syncFromSheets() {
     const sheetRecs = (data.records || []).map(r => ({
       seq: Number(r.seq), vendor: r.vendor, year: Number(r.year)||r.year, date: String(r.date||''),
       issue: r.issue, summary: r.summary,
-      photos: r.photos || [], created_at: r.created_at || '', isEmbedded: false
+      photos: r.photos || [],
+      created_at: r.created_at || '',
+      isEmbedded: !(r.created_at && r.created_at.trim() !== '')
     }));
 
     if (sheetRecs.length > 0) {
@@ -935,11 +937,21 @@ function applyFilter() {
     if (search && !(r.vendor+r.issue+r.summary+r.date).toLowerCase().includes(search)) return false;
     return true;
   }).slice().sort((a,b) => {
-    // 有 created_at 的（新增記錄）排在前面，依時間降序
-    if (a.created_at && b.created_at) return b.created_at.localeCompare(a.created_at);
-    if (a.created_at && !b.created_at) return -1;
-    if (!a.created_at && b.created_at) return 1;
-    // 兩者都沒有 created_at（歷史資料），依 seq 降序
+    // 統一依 year 降序 → date 降序 → seq 降序
+    if (Number(b.year) !== Number(a.year)) return Number(b.year) - Number(a.year);
+    // date 格式：yyyy/MM/dd 或 M/D，統一轉成可比較的數字 MMDD
+    function dateVal(r) {
+      const d = String(r.date || '');
+      // yyyy/MM/dd 格式
+      const m1 = d.match(/\d{4}\/(\d{1,2})\/(\d{1,2})/);
+      if (m1) return parseInt(m1[1]) * 100 + parseInt(m1[2]);
+      // M/D 格式
+      const m2 = d.match(/^(\d{1,2})\/(\d{1,2})$/);
+      if (m2) return parseInt(m2[1]) * 100 + parseInt(m2[2]);
+      return 0;
+    }
+    const dv = dateVal(b) - dateVal(a);
+    if (dv !== 0) return dv;
     return Number(b.seq) - Number(a.seq);
   });
   document.getElementById('filterCount').textContent = `共 ${filteredRecords.length} 筆`;
@@ -958,7 +970,7 @@ function renderMobileCards() {
         <span class="rc-seq">${r.seq}</span>
         <span class="rc-vendor">${r.vendor}</span>
         ${!r.isEmbedded ? '<span class="rc-new">新</span>' : ''}
-        <span class="rc-date">${r.year}/${r.date}</span>
+        <span class="rc-date">${String(r.date).includes('/') && String(r.date).length > 5 ? r.date : r.year+'/'+r.date}</span>
       </div>
       <div class="rc-body">
         <div class="rc-issue">${r.issue}</div>
@@ -974,7 +986,7 @@ function renderDesktopTable() {
       <td class="tc">${r.seq}${!r.isEmbedded?'<br><span style="font-size:9px;color:var(--accent)">新</span>':''}</td>
       <td style="font-weight:500;color:var(--navy)">${r.vendor}</td>
       <td class="tc">${r.year}</td>
-      <td class="tc">${r.date}</td>
+      <td class="tc">${String(r.date).includes("/")&&String(r.date).length>5?r.date:r.year+"/"+r.date}</td>
       <td style="white-space:pre-wrap;font-size:12px">${r.issue}</td>
       <td><div class="td-s" onclick="this.classList.toggle('exp');event.stopPropagation()">${r.summary||''}</div></td>
       <td class="tc"><button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();editFromList(${r.seq})" style="padding:3px 7px">✏️</button></td>
