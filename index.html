@@ -985,6 +985,11 @@ function renderMobileCards() {
         <div class="rc-summary">${(r.summary||'').substring(0,80).replace(/\n/g,' ')}${(r.summary||'').length>80?'…':''}</div>
       </div>
     </div>`).join('');
+  // 事件委派：處理手機觸控點擊
+  el.onclick = function(e) {
+    const card = e.target.closest('.rc');
+    if (card && card.dataset.seq) openModal(card.dataset.seq);
+  };
 }
 
 function renderDesktopTable() {
