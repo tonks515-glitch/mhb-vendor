@@ -829,7 +829,7 @@ function handlePhoto(e) {
         const kb = Math.round(compressed.length * 0.75 / 1024);
         console.log('壓縮後:', kb, 'KB');
         if (pendingPhotos.length >= 20) { showToast('⚠️ 最多上傳 20 張照片'); return; }
-        pendingPhotos.push(compressed);
+        pendingPhotos.push({ base64: compressed, url: '' });
         renderThumbs();
       };
       img.src = ev.target.result;
@@ -839,9 +839,10 @@ function handlePhoto(e) {
   e.target.value = '';
 }
 function renderThumbs() {
-  document.getElementById('photoThumbs').innerHTML = pendingPhotos.map((src, i) => {
-    const thumb = src.startsWith('https://') ? src : src; // 兩種都直接用 src
-    return `<div class="ph-wrap"><img class="ph-img" src="${thumb}" onclick="openPV('${thumb}')">
+  document.getElementById('photoThumbs').innerHTML = pendingPhotos.map((p, i) => {
+    const thumb = typeof p === 'object' ? p.base64 : p;
+    const viewUrl = typeof p === 'object' && p.url ? p.url : thumb;
+    return `<div class="ph-wrap"><img class="ph-img" src="${thumb}" onclick="openPV('${viewUrl}')">
     <button class="ph-del" onclick="removePhoto(${i})">✕</button></div>`;
   }).join('');
 }
@@ -871,21 +872,27 @@ async function saveRecord() {
   btn.disabled = true;
 
   // 先上傳照片到 Google Drive（只處理 base64，URL 直接保留）
-  const existingUrls = pendingPhotos.filter(p => p.startsWith('http'));
-  const newBase64s = pendingPhotos.filter(p => !p.startsWith('http'));
-  let photoUrls = [...existingUrls];
+  // pendingPhotos 可能是 {base64, url} 物件或純 URL 字串（舊記錄）
+  const existingUrls = pendingPhotos
+    .filter(p => typeof p === 'string' && p.startsWith('http'));
+  const newItems = pendingPhotos
+    .filter(p => typeof p === 'object' && p.base64);
+  const alreadyUploaded = pendingPhotos
+    .filter(p => typeof p === 'object' && p.url && !p.base64.startsWith('data:'));
+  let photoUrls = [...existingUrls, ...alreadyUploaded.map(p => p.url)];
 
-  if (newBase64s.length > 0) {
-    showToast('⏳ 上傳照片中...');
+  if (newItems.length > 0) {
+    showToast('⏳ 上傳照片中（0/' + newItems.length + '）...');
     const dateStr = fmtDate({year, date});
     const folderName = (dateStr + ' ' + vendor + ' ' + issue).substring(0, 50).replace(/[/:*?"<>|\\]/g, '-');
     const dateParts = String(date).match(/(\d{1,2})[\/](\d{1,2})/);
     const month = dateParts ? String(dateParts[1]).padStart(2,'0') : '01';
 
-    for (let i = 0; i < newBase64s.length; i++) {
+    for (let i = 0; i < newItems.length; i++) {
+      showToast('⏳ 上傳照片中（' + (i+1) + '/' + newItems.length + '）...');
       try {
         const res = await gasPost('uploadPhoto', {
-          base64: newBase64s[i],
+          base64: newItems[i].base64,
           filename: 'photo_' + Date.now() + '_' + (i+1) + '.jpg',
           folderName: folderName,
           year: year,
@@ -894,13 +901,13 @@ async function saveRecord() {
         if (res.ok && res.url) {
           photoUrls.push(res.url);
         } else {
-          alert('照片上傳失敗：' + (res.error || '未知'));
+          showToast('❌ 第' + (i+1) + '張照片上傳失敗：' + (res.error || '未知'));
           btn.textContent = '💾 儲存記錄';
           btn.disabled = false;
           return;
         }
       } catch(e) {
-        alert('照片上傳錯誤：' + e.message);
+        showToast('❌ 照片上傳錯誤：' + e.message);
         btn.textContent = '💾 儲存記錄';
         btn.disabled = false;
         return;
@@ -1079,8 +1086,12 @@ function openModal(seq) {
   let html = `<div class="mf-label">問題敘述</div><div class="mf-val">${r.issue}</div>
     <div class="mf-label">摘要</div><div class="mf-val">${r.summary||''}</div>`;
   if (r.photos && r.photos.length) {
-    html += `<div class="mf-label">照片（${r.photos.length}張）</div>
-      <div class="m-photos">${r.photos.map(p=>`<img class="m-photo" src="${p}" onclick="openPV('${p}')">`).join('')}</div>`;
+    html += `<div class="mf-label">照片（${r.photos.length}張，點縮圖到 Drive 看原圖）</div>
+      <div class="m-photos">${r.photos.map(p => {
+        const url = typeof p === 'object' ? p.url : p;
+        const thumb = typeof p === 'object' ? p.base64 : p;
+        return `<img class="m-photo" src="${thumb}" onclick="window.open('${url}','_blank')" style="cursor:pointer">`;
+      }).join('')}</div>`;
   }
   document.getElementById('mBody').innerHTML = html;
   document.getElementById('detailModal').classList.add('open');
@@ -1114,7 +1125,13 @@ function editFromList(seq) {
   document.getElementById('f-date').value = r.date;
   document.getElementById('f-issue').value = r.issue;
   document.getElementById('f-summary').value = r.summary||'';
-  pendingPhotos = [...(r.photos||[])]; renderThumbs(); // 包含 Drive URL 和 base64
+  // 舊記錄照片是 Drive URL 字串，轉成物件格式顯示
+  pendingPhotos = (r.photos||[]).map(p => 
+    typeof p === 'string' && p.startsWith('http') 
+      ? { base64: p, url: p }  // URL 當縮圖會失敗，但保留 url
+      : (typeof p === 'object' ? p : { base64: p, url: '' })
+  );
+  renderThumbs();
   currentEditSeq = seq;
   document.getElementById('editBadge').style.display = 'inline-flex';
   document.getElementById('formTitle').textContent = `✏️ 編輯記錄 #${seq}`;
