@@ -882,6 +882,7 @@ async function saveRecord() {
     const dateParts = String(date).match(/(\d{1,2})[\/](\d{1,2})/);
     const month = dateParts ? String(dateParts[1]).padStart(2,'0') : '01';
 
+    alert('準備上傳 ' + newBase64s.length + ' 張照片，第1張大小：' + Math.round(newBase64s[0].length/1024) + ' KB');
     for (let i = 0; i < newBase64s.length; i++) {
       try {
         const res = await gasPost('uploadPhoto', {
