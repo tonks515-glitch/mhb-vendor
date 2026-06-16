@@ -887,10 +887,19 @@ async function saveRecord() {
           year: year,
           month: month
         });
-        if (res.ok) photoUrls.push(res.url);
-        else console.warn('照片上傳失敗:', res.error);
+        if (res.ok) {
+          photoUrls.push(res.url);
+        } else {
+          showToast('❌ 照片上傳失敗：' + (res.error || '未知錯誤'));
+          btn.textContent = '💾 儲存記錄';
+          btn.disabled = false;
+          return;
+        }
       } catch(e) {
-        console.warn('照片上傳錯誤:', e);
+        showToast('❌ 照片上傳錯誤：' + e.message);
+        btn.textContent = '💾 儲存記錄';
+        btn.disabled = false;
+        return;
       }
     }
   }
