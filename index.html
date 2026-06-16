@@ -266,8 +266,25 @@ textarea{resize:vertical;min-height:90px}
     </div>
 
     <div class="form-row">
-      <label>摘要（F欄）<span class="req">*</span></label>
-      <textarea id="f-summary" rows="4" placeholder="請輸入摘要，或先填好廠商＋問題敘述後，點下方範本一鍵套用..."></textarea>
+      <label>廠商人員 <span class="req">*</span></label>
+      <input type="text" id="f-staff" placeholder="例: 林崇豐、黃寶篁" oninput="autoSummary()">
+    </div>
+
+    <div class="form-row">
+      <label>施工內容（可多項）<span class="req">*</span></label>
+      <div id="content-items">
+        <div class="content-item" style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start">
+          <span style="color:var(--navy);font-weight:700;padding-top:9px;flex-shrink:0">◎</span>
+          <input type="text" class="content-input" placeholder="輸入施工內容..." oninput="autoSummary()" style="flex:1">
+          <button class="btn btn-secondary btn-sm" onclick="removeContentItem(this)" style="flex-shrink:0;margin-top:4px">✕</button>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="addContentItem()" style="margin-top:6px">＋ 新增項目</button>
+    </div>
+
+    <div class="form-row">
+      <label>摘要（F欄）<span style="font-size:11px;color:var(--g400);font-weight:400"> — 自動產生，不需手動輸入</span></label>
+      <textarea id="f-summary" rows="5" readonly style="background:var(--g100);color:var(--g600);cursor:default;font-size:13px" placeholder="填寫上方欄位後自動產生..."></textarea>
       <div class="template-area" id="tmpl-area" style="display:none">
         <div class="tmpl-label">💡 歷史範本（點選套用）：</div>
         <div class="chips" id="tmpl-chips"></div>
@@ -612,6 +629,7 @@ function filterVendorSelect() {
 function onVendorSelect() {
   updateIssueChips();
   updateTemplates();
+  autoSummary();
 }
 
 function populateVendorSelectBox() {
@@ -643,6 +661,7 @@ function selectIssue(val) {
   document.getElementById('f-issue').value = val;
   document.getElementById('ac-issue').style.display = 'none';
   updateTemplates();
+  autoSummary();
 }
 
 // ============================================================
@@ -989,6 +1008,10 @@ function clearForm() {
   document.getElementById('vendorSearch').value = '';
   populateVendorSelectBox();
   document.getElementById('f-date').value = '';
+  document.getElementById('f-time').value = '';
+  document.getElementById('f-staff').value = '';
+  const ci = document.getElementById('content-items');
+  ci.innerHTML = '<div class="content-item" style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start"><span style="color:var(--navy);font-weight:700;padding-top:9px;flex-shrink:0">◎</span><input type="text" class="content-input" placeholder="輸入施工內容..." oninput="autoSummary()" style="flex:1"><button class="btn btn-secondary btn-sm" onclick="removeContentItem(this)" style="flex-shrink:0;margin-top:4px">✕</button></div>';
   const ry = localStorage.getItem('miaohui_last_year') || new Date().getFullYear();
   document.getElementById('f-year').value = ry;
   document.getElementById('f-issue').value = '';
@@ -1159,7 +1182,26 @@ function editFromList(seq) {
   document.getElementById('f-year').value = r.year;
   document.getElementById('f-date').value = r.date;
   document.getElementById('f-issue').value = r.issue;
-  document.getElementById('f-summary').value = r.summary||'';
+  const sum = r.summary || '';
+  document.getElementById('f-summary').value = sum;
+  // 解析摘要填入各欄位
+  const timeMatch = sum.match(/1[.．]\s*日期[：:]([^\n]+)/);
+  const rawTime = timeMatch ? timeMatch[1] : '';
+  const timeOnly = rawTime.replace(/^[\d]{4}\/[\d]{1,2}\/[\d]{1,2}\s*/, '').replace(/^[\d]{1,2}\/[\d]{1,2}\s*/, '').trim();
+  const staffMatch = sum.match(/2[.．]\s*廠商[：:]([^\n]+)/);
+  const rawStaff = staffMatch ? staffMatch[1] : '';
+  const staffOnly = rawStaff.replace(r.vendor, '').trim();
+  const contentLines = [];
+  let m; const re = /◎([^\n]+)/g;
+  while ((m = re.exec(sum)) !== null) contentLines.push(m[1].trim());
+  document.getElementById('f-time').value = timeOnly;
+  document.getElementById('f-staff').value = staffOnly;
+  const ci2 = document.getElementById('content-items');
+  if (contentLines.length > 0) {
+    ci2.innerHTML = contentLines.map(line =>
+      '<div class="content-item" style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start"><span style="color:var(--navy);font-weight:700;padding-top:9px;flex-shrink:0">◎</span><input type="text" class="content-input" value="' + line.replace(/"/g, '&quot;') + '" oninput="autoSummary()" style="flex:1"><button class="btn btn-secondary btn-sm" onclick="removeContentItem(this)" style="flex-shrink:0;margin-top:4px">✕</button></div>'
+    ).join('');
+  }
   // 舊記錄照片是 Drive URL，標記為已上傳，不重新上傳
   pendingPhotos = (r.photos||[]).map(p => {
     if (typeof p === 'string' && p.includes('|||')) {
