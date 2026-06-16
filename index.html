@@ -284,7 +284,10 @@ textarea{resize:vertical;min-height:90px}
 
     <div class="form-row">
       <label>摘要（F欄）<span style="font-size:11px;color:var(--g400);font-weight:400"> — 自動產生，不需手動輸入</span></label>
-      <textarea id="f-summary" rows="5" readonly style="background:var(--g100);color:var(--g600);cursor:default;font-size:13px" placeholder="填寫上方欄位後自動產生..."></textarea>
+      <div style="position:relative">
+      <textarea id="f-summary" rows="5" readonly style="background:var(--g100);color:var(--g600);cursor:default;font-size:13px;padding-right:38px" placeholder="填寫上方欄位後自動產生..."></textarea>
+      <button id="copyBtn" onclick="copySummary()" title="複製摘要" style="position:absolute;top:6px;right:6px;background:rgba(26,74,120,0.08);border:none;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:16px;color:var(--navy);transition:all .2s">⎘</button>
+      </div>
       <div class="template-area" id="tmpl-area" style="display:none">
         <div class="tmpl-label">💡 歷史範本（點選套用）：</div>
         <div class="chips" id="tmpl-chips"></div>
@@ -1348,6 +1351,35 @@ function removeContentItem(btn) {
   }
   btn.closest('.content-item').remove();
   autoSummary();
+}
+
+function copySummary() {
+  const txt = document.getElementById('f-summary').value;
+  if (!txt) { showToast('⚠️ 摘要尚未產生'); return; }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(() => {
+      const btn = document.getElementById('copyBtn');
+      btn.textContent = '✓';
+      setTimeout(() => { btn.textContent = '⎘'; }, 2000);
+    }).catch(() => fallbackCopy(txt));
+  } else {
+    fallbackCopy(txt);
+  }
+}
+function fallbackCopy(txt) {
+  const el = document.getElementById('f-summary');
+  el.removeAttribute('readonly');
+  el.select();
+  el.setSelectionRange(0, 99999);
+  try {
+    document.execCommand('copy');
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = '✓';
+    setTimeout(() => { btn.textContent = '⎘'; }, 2000);
+  } catch(e) {
+    showToast('❌ 複製失敗，請手動複製');
+  }
+  el.setAttribute('readonly', true);
 }
 
 function saveLastYear() {
