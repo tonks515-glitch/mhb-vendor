@@ -828,7 +828,7 @@ function handlePhoto(e) {
         const compressed = canvas.toDataURL('image/jpeg', 0.5);
         const kb = Math.round(compressed.length * 0.75 / 1024);
         console.log('壓縮後:', kb, 'KB');
-        if (pendingPhotos.length >= 1) { showToast('⚠️ 目前每筆記錄限上傳 1 張照片'); return; }
+        if (pendingPhotos.length >= 20) { showToast('⚠️ 最多上傳 20 張照片'); return; }
         pendingPhotos.push(compressed);
         renderThumbs();
       };
@@ -871,7 +871,6 @@ async function saveRecord() {
   btn.disabled = true;
 
   // 先上傳照片到 Google Drive（只處理 base64，URL 直接保留）
-  alert('pendingPhotos 數量：' + pendingPhotos.length + '，第1筆開頭：' + (pendingPhotos[0] ? pendingPhotos[0].substring(0,30) : '空'));
   const existingUrls = pendingPhotos.filter(p => p.startsWith('http'));
   const newBase64s = pendingPhotos.filter(p => !p.startsWith('http'));
   let photoUrls = [...existingUrls];
@@ -883,7 +882,6 @@ async function saveRecord() {
     const dateParts = String(date).match(/(\d{1,2})[\/](\d{1,2})/);
     const month = dateParts ? String(dateParts[1]).padStart(2,'0') : '01';
 
-    alert('準備上傳 ' + newBase64s.length + ' 張照片，第1張大小：' + Math.round(newBase64s[0].length/1024) + ' KB');
     for (let i = 0; i < newBase64s.length; i++) {
       try {
         const res = await gasPost('uploadPhoto', {
