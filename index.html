@@ -815,7 +815,19 @@ function handlePhoto(e) {
     const reader = new FileReader();
     reader.onload = ev => {
       img.onload = () => {
-        // 壓縮：最大寬高 1200px，品質 0.7
+        if (pendingPhotos.length >= 20) { showToast('⚠️ 最多上傳 20 張照片'); return; }
+        // 縮圖（200px，用於系統顯示）
+        const THUMB = 200;
+        let tw = img.width, th = img.height;
+        if (tw > THUMB || th > THUMB) {
+          if (tw > th) { th = Math.round(th * THUMB / tw); tw = THUMB; }
+          else { tw = Math.round(tw * THUMB / th); th = THUMB; }
+        }
+        const tc = document.createElement('canvas');
+        tc.width = tw; tc.height = th;
+        tc.getContext('2d').drawImage(img, 0, 0, tw, th);
+        const thumb = tc.toDataURL('image/jpeg', 0.6);
+        // 上傳圖（800px，存到 Drive）
         const MAX = 800;
         let w = img.width, h = img.height;
         if (w > MAX || h > MAX) {
@@ -825,11 +837,8 @@ function handlePhoto(e) {
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        const compressed = canvas.toDataURL('image/jpeg', 0.5);
-        const kb = Math.round(compressed.length * 0.75 / 1024);
-        console.log('壓縮後:', kb, 'KB');
-        if (pendingPhotos.length >= 20) { showToast('⚠️ 最多上傳 20 張照片'); return; }
-        pendingPhotos.push({ base64: compressed, url: '' });
+        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+        pendingPhotos.push({ thumb, base64: compressed, url: '', uploaded: false });
         renderThumbs();
       };
       img.src = ev.target.result;
@@ -842,8 +851,8 @@ function renderThumbs() {
   document.getElementById('photoThumbs').innerHTML = pendingPhotos.map((p, i) => {
     const isUploaded = typeof p === 'object' && p.uploaded;
     const thumbSrc = isUploaded
-      ? (p.thumb || null)
-      : (typeof p === 'object' ? p.base64 : p);
+      ? (p.thumb || null)  // 已上傳：用存的 base64 縮圖
+      : (typeof p === 'object' ? (p.thumb || p.base64) : p);  // 新照片：用本地縮圖
     const viewUrl = typeof p === 'object' && p.url ? p.url : (thumbSrc || '');
     if (isUploaded && thumbSrc) {
       return `<div class="ph-wrap"><img class="ph-img" src="${thumbSrc}" onclick="window.open('${viewUrl}','_blank')" style="cursor:pointer" title="點擊到 Drive 看原圖">
@@ -915,7 +924,9 @@ async function saveRecord() {
           month: month
         });
         if (res.ok && res.url) {
-          photoUrls.push(res.thumb ? res.thumb + '|||' + res.url : res.url);
+          // 存 base64縮圖|||Drive原圖URL
+          const thumbData = newItems[i].thumb || '';
+          photoUrls.push(thumbData + '|||' + res.url);
         } else {
           showToast('❌ 第' + (i+1) + '張照片上傳失敗：' + (res.error || '未知'));
           btn.textContent = '💾 儲存記錄';
@@ -1106,7 +1117,9 @@ function openModal(seq) {
       <div class="m-photos">${r.photos.map(p => {
         let thumb, url;
         if (typeof p === 'string' && p.includes('|||')) {
-          [thumb, url] = p.split('|||');
+          const si = p.indexOf('|||');
+          thumb = p.substring(0, si);
+          url = p.substring(si + 3);
         } else if (typeof p === 'object') {
           thumb = p.thumb || p.base64; url = p.url;
         } else {
@@ -1150,14 +1163,16 @@ function editFromList(seq) {
   // 舊記錄照片是 Drive URL，標記為已上傳，不重新上傳
   pendingPhotos = (r.photos||[]).map(p => {
     if (typeof p === 'string' && p.includes('|||')) {
-      const [thumb, url] = p.split('|||');
-      return { base64: null, thumb, url, uploaded: true };
+      const sepIdx = p.indexOf('|||');
+      const thumb = p.substring(0, sepIdx);  // base64 縮圖
+      const url = p.substring(sepIdx + 3);   // Drive URL
+      return { thumb, base64: null, url, uploaded: true };
     }
     if (typeof p === 'string' && p.startsWith('http')) {
-      return { base64: null, thumb: null, url: p, uploaded: true };
+      return { thumb: null, base64: null, url: p, uploaded: true };
     }
     if (typeof p === 'object') return p;
-    return { base64: p, url: '', uploaded: false };
+    return { thumb: null, base64: p, url: '', uploaded: false };
   });
   renderThumbs();
   currentEditSeq = seq;
