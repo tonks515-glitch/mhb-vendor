@@ -871,6 +871,7 @@ async function saveRecord() {
   btn.disabled = true;
 
   // 先上傳照片到 Google Drive（只處理 base64，URL 直接保留）
+  alert('pendingPhotos 數量：' + pendingPhotos.length + '，第1筆開頭：' + (pendingPhotos[0] ? pendingPhotos[0].substring(0,30) : '空'));
   const existingUrls = pendingPhotos.filter(p => p.startsWith('http'));
   const newBase64s = pendingPhotos.filter(p => !p.startsWith('http'));
   let photoUrls = [...existingUrls];
