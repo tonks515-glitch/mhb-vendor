@@ -841,15 +841,20 @@ function handlePhoto(e) {
 function renderThumbs() {
   document.getElementById('photoThumbs').innerHTML = pendingPhotos.map((p, i) => {
     const isUploaded = typeof p === 'object' && p.uploaded;
-    const thumb = isUploaded ? null : (typeof p === 'object' ? p.base64 : p);
-    const viewUrl = typeof p === 'object' && p.url ? p.url : (thumb || '');
-    if (isUploaded) {
-      // 已上傳到 Drive 的照片，顯示 Drive 圖示
-      return `<div class="ph-wrap" style="position:relative">
+    const thumbSrc = isUploaded
+      ? (p.thumb || null)
+      : (typeof p === 'object' ? p.base64 : p);
+    const viewUrl = typeof p === 'object' && p.url ? p.url : (thumbSrc || '');
+    if (isUploaded && thumbSrc) {
+      return `<div class="ph-wrap"><img class="ph-img" src="${thumbSrc}" onclick="window.open('${viewUrl}','_blank')" style="cursor:pointer" title="點擊到 Drive 看原圖">
+      <button class="ph-del" onclick="removePhoto(${i})">✕</button></div>`;
+    }
+    if (isUploaded && !thumbSrc) {
+      return `<div class="ph-wrap">
         <div class="ph-img" style="display:flex;align-items:center;justify-content:center;background:#e8f0fe;border-radius:6px;border:2px solid #1A4A78;cursor:pointer;font-size:11px;color:#1A4A78;text-align:center;padding:4px" onclick="window.open('${viewUrl}','_blank')">📷<br>Drive</div>
         <button class="ph-del" onclick="removePhoto(${i})">✕</button></div>`;
     }
-    return `<div class="ph-wrap"><img class="ph-img" src="${thumb}" onclick="openPV('${viewUrl}')">
+    return `<div class="ph-wrap"><img class="ph-img" src="${thumbSrc}" onclick="openPV('${thumbSrc}')">
     <button class="ph-del" onclick="removePhoto(${i})">✕</button></div>`;
   }).join('');
 }
@@ -888,7 +893,7 @@ async function saveRecord() {
   );
   const existingUrlStrings = pendingPhotos.filter(p => typeof p === 'string' && p.startsWith('http'));
   let photoUrls = [
-    ...uploadedItems.map(p => p.url),
+    ...uploadedItems.map(p => p.thumb && p.url ? p.thumb + '|||' + p.url : p.url),
     ...existingUrlStrings
   ];
 
@@ -910,7 +915,7 @@ async function saveRecord() {
           month: month
         });
         if (res.ok && res.url) {
-          photoUrls.push(res.url);
+          photoUrls.push(res.thumb ? res.thumb + '|||' + res.url : res.url);
         } else {
           showToast('❌ 第' + (i+1) + '張照片上傳失敗：' + (res.error || '未知'));
           btn.textContent = '💾 儲存記錄';
@@ -1099,9 +1104,15 @@ function openModal(seq) {
   if (r.photos && r.photos.length) {
     html += `<div class="mf-label">照片（${r.photos.length}張，點縮圖到 Drive 看原圖）</div>
       <div class="m-photos">${r.photos.map(p => {
-        const url = typeof p === 'object' ? p.url : p;
-        const thumb = typeof p === 'object' ? p.base64 : p;
-        return `<img class="m-photo" src="${thumb}" onclick="window.open('${url}','_blank')" style="cursor:pointer">`;
+        let thumb, url;
+        if (typeof p === 'string' && p.includes('|||')) {
+          [thumb, url] = p.split('|||');
+        } else if (typeof p === 'object') {
+          thumb = p.thumb || p.base64; url = p.url;
+        } else {
+          thumb = p; url = p;
+        }
+        return `<img class="m-photo" src="${thumb}" onclick="window.open('${url}','_blank')" style="cursor:pointer" title="點擊到 Drive 看原圖">`;
       }).join('')}</div>`;
   }
   document.getElementById('mBody').innerHTML = html;
@@ -1138,8 +1149,12 @@ function editFromList(seq) {
   document.getElementById('f-summary').value = r.summary||'';
   // 舊記錄照片是 Drive URL，標記為已上傳，不重新上傳
   pendingPhotos = (r.photos||[]).map(p => {
+    if (typeof p === 'string' && p.includes('|||')) {
+      const [thumb, url] = p.split('|||');
+      return { base64: null, thumb, url, uploaded: true };
+    }
     if (typeof p === 'string' && p.startsWith('http')) {
-      return { base64: null, url: p, uploaded: true };
+      return { base64: null, thumb: null, url: p, uploaded: true };
     }
     if (typeof p === 'object') return p;
     return { base64: p, url: '', uploaded: false };
