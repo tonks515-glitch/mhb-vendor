@@ -256,7 +256,7 @@ textarea{resize:vertical;min-height:90px}
       <label>問題敘述（E欄）<span class="req">*</span></label>
       <div class="ac-wrap">
         <input type="text" id="f-issue" placeholder="輸入或選擇常見問題..." autocomplete="off"
-          oninput="onIssueInput()" onblur="hideAC('ac-issue',250)" onkeydown="issueKey(event)">
+          oninput="onIssueInput();autoSummary()" onblur="hideAC('ac-issue',250)" onkeydown="issueKey(event)">
         <div class="ac-list" id="ac-issue" style="display:none"></div>
       </div>
       <div class="template-area" id="issue-chips" style="display:none">
@@ -1305,6 +1305,51 @@ function renderStats() {
 // ============================================================
 // TOAST
 // ============================================================
+function autoSummary() {
+  const sel = document.getElementById('f-vendor');
+  const vendor = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].value : '';
+  const year = document.getElementById('f-year').value || '';
+  const date = document.getElementById('f-date').value || '';
+  const timeEl = document.getElementById('f-time');
+  const time = timeEl ? timeEl.value : '';
+  const issue = document.getElementById('f-issue').value || '';
+  const staffEl = document.getElementById('f-staff');
+  const staff = staffEl ? staffEl.value : '';
+  const items = Array.from(document.querySelectorAll('.content-input'))
+    .map(i => i.value.trim()).filter(Boolean);
+  if (!issue && !vendor) { document.getElementById('f-summary').value = ''; return; }
+  const nl = '\n';
+  let s = (issue || '') + '：' + nl;
+  s += '1. 日期：' + (year ? year + '/' : '') + date;
+  if (time) s += ' ' + time;
+  s += nl + '2. 廠商：' + vendor;
+  if (staff) s += staff;
+  s += nl + '3. 內容：' + nl;
+  s += items.length > 0 ? items.map(i => '◎' + i).join(nl) : '◎';
+  document.getElementById('f-summary').value = s;
+}
+
+function addContentItem() {
+  const container = document.getElementById('content-items');
+  const div = document.createElement('div');
+  div.className = 'content-item';
+  div.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:flex-start';
+  div.innerHTML = '<span style="color:var(--navy);font-weight:700;padding-top:9px;flex-shrink:0">◎</span><input type="text" class="content-input" placeholder="輸入施工內容..." oninput="autoSummary()" style="flex:1"><button class="btn btn-secondary btn-sm" onclick="removeContentItem(this)" style="flex-shrink:0;margin-top:4px">✕</button>';
+  container.appendChild(div);
+  div.querySelector('input').focus();
+}
+
+function removeContentItem(btn) {
+  const items = document.querySelectorAll('.content-item');
+  if (items.length <= 1) {
+    btn.closest('.content-item').querySelector('input').value = '';
+    autoSummary();
+    return;
+  }
+  btn.closest('.content-item').remove();
+  autoSummary();
+}
+
 function saveLastYear() {
   const y = document.getElementById('f-year').value;
   if (y) localStorage.setItem('miaohui_last_year', y);
