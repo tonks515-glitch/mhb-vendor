@@ -840,8 +840,15 @@ function handlePhoto(e) {
 }
 function renderThumbs() {
   document.getElementById('photoThumbs').innerHTML = pendingPhotos.map((p, i) => {
-    const thumb = typeof p === 'object' ? p.base64 : p;
-    const viewUrl = typeof p === 'object' && p.url ? p.url : thumb;
+    const isUploaded = typeof p === 'object' && p.uploaded;
+    const thumb = isUploaded ? null : (typeof p === 'object' ? p.base64 : p);
+    const viewUrl = typeof p === 'object' && p.url ? p.url : (thumb || '');
+    if (isUploaded) {
+      // 已上傳到 Drive 的照片，顯示 Drive 圖示
+      return `<div class="ph-wrap" style="position:relative">
+        <div class="ph-img" style="display:flex;align-items:center;justify-content:center;background:#e8f0fe;border-radius:6px;border:2px solid #1A4A78;cursor:pointer;font-size:11px;color:#1A4A78;text-align:center;padding:4px" onclick="window.open('${viewUrl}','_blank')">📷<br>Drive</div>
+        <button class="ph-del" onclick="removePhoto(${i})">✕</button></div>`;
+    }
     return `<div class="ph-wrap"><img class="ph-img" src="${thumb}" onclick="openPV('${viewUrl}')">
     <button class="ph-del" onclick="removePhoto(${i})">✕</button></div>`;
   }).join('');
@@ -872,14 +879,18 @@ async function saveRecord() {
   btn.disabled = true;
 
   // 先上傳照片到 Google Drive（只處理 base64，URL 直接保留）
-  // pendingPhotos 可能是 {base64, url} 物件或純 URL 字串（舊記錄）
-  const existingUrls = pendingPhotos
-    .filter(p => typeof p === 'string' && p.startsWith('http'));
-  const newItems = pendingPhotos
-    .filter(p => typeof p === 'object' && p.base64);
-  const alreadyUploaded = pendingPhotos
-    .filter(p => typeof p === 'object' && p.url && !p.base64.startsWith('data:'));
-  let photoUrls = [...existingUrls, ...alreadyUploaded.map(p => p.url)];
+  // uploaded:true = 已在 Drive，直接保留 URL
+  // base64 = 新選的照片，需要上傳
+  const uploadedItems = pendingPhotos.filter(p => typeof p === 'object' && p.uploaded);
+  const newItems = pendingPhotos.filter(p => 
+    (typeof p === 'object' && !p.uploaded && p.base64) ||
+    (typeof p === 'string' && !p.startsWith('http'))
+  );
+  const existingUrlStrings = pendingPhotos.filter(p => typeof p === 'string' && p.startsWith('http'));
+  let photoUrls = [
+    ...uploadedItems.map(p => p.url),
+    ...existingUrlStrings
+  ];
 
   if (newItems.length > 0) {
     showToast('⏳ 上傳照片中（0/' + newItems.length + '）...');
@@ -892,7 +903,7 @@ async function saveRecord() {
       showToast('⏳ 上傳照片中（' + (i+1) + '/' + newItems.length + '）...');
       try {
         const res = await gasPost('uploadPhoto', {
-          base64: newItems[i].base64,
+          base64: typeof newItems[i] === "object" ? newItems[i].base64 : newItems[i],
           filename: 'photo_' + Date.now() + '_' + (i+1) + '.jpg',
           folderName: folderName,
           year: year,
@@ -1125,12 +1136,14 @@ function editFromList(seq) {
   document.getElementById('f-date').value = r.date;
   document.getElementById('f-issue').value = r.issue;
   document.getElementById('f-summary').value = r.summary||'';
-  // 舊記錄照片是 Drive URL 字串，轉成物件格式顯示
-  pendingPhotos = (r.photos||[]).map(p => 
-    typeof p === 'string' && p.startsWith('http') 
-      ? { base64: p, url: p }  // URL 當縮圖會失敗，但保留 url
-      : (typeof p === 'object' ? p : { base64: p, url: '' })
-  );
+  // 舊記錄照片是 Drive URL，標記為已上傳，不重新上傳
+  pendingPhotos = (r.photos||[]).map(p => {
+    if (typeof p === 'string' && p.startsWith('http')) {
+      return { base64: null, url: p, uploaded: true };
+    }
+    if (typeof p === 'object') return p;
+    return { base64: p, url: '', uploaded: false };
+  });
   renderThumbs();
   currentEditSeq = seq;
   document.getElementById('editBadge').style.display = 'inline-flex';
