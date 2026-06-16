@@ -870,44 +870,44 @@ async function saveRecord() {
   btn.textContent = '⏳ 儲存中...';
   btn.disabled = true;
 
-  // 先上傳照片到 Google Drive
-  let photoUrls = [];
-  if (pendingPhotos.length > 0) {
+  // 先上傳照片到 Google Drive（只處理 base64，URL 直接保留）
+  const existingUrls = pendingPhotos.filter(p => p.startsWith('http'));
+  const newBase64s = pendingPhotos.filter(p => !p.startsWith('http'));
+  let photoUrls = [...existingUrls];
+
+  if (newBase64s.length > 0) {
     showToast('⏳ 上傳照片中...');
     const dateStr = fmtDate({year, date});
-    const folderName = (dateStr + ' ' + vendor + ' ' + issue).substring(0, 50).replace(/[/\\:*?"<>|]/g, '-');
-    const month = String(date).includes('/') ? String(date).split('/')[0].padStart(2,'0')
-                : String(date).match(/\/(\d{1,2})\//)?.[1]?.padStart(2,'0') || '01';
-    for (let i = 0; i < pendingPhotos.length; i++) {
+    const folderName = (dateStr + ' ' + vendor + ' ' + issue).substring(0, 50).replace(/[/:*?"<>|\\]/g, '-');
+    const dateParts = String(date).match(/(\d{1,2})[\/](\d{1,2})/);
+    const month = dateParts ? String(dateParts[1]).padStart(2,'0') : '01';
+
+    for (let i = 0; i < newBase64s.length; i++) {
       try {
         const res = await gasPost('uploadPhoto', {
-          base64: pendingPhotos[i],
-          filename: 'photo_' + (i+1) + '.jpg',
+          base64: newBase64s[i],
+          filename: 'photo_' + Date.now() + '_' + (i+1) + '.jpg',
           folderName: folderName,
           year: year,
           month: month
         });
-        if (res.ok) {
+        if (res.ok && res.url) {
           photoUrls.push(res.url);
         } else {
-          showToast('❌ 照片上傳失敗：' + (res.error || '未知錯誤'));
+          alert('照片上傳失敗：' + (res.error || '未知'));
           btn.textContent = '💾 儲存記錄';
           btn.disabled = false;
           return;
         }
       } catch(e) {
-        showToast('❌ 照片上傳錯誤：' + e.message);
+        alert('照片上傳錯誤：' + e.message);
         btn.textContent = '💾 儲存記錄';
         btn.disabled = false;
         return;
       }
     }
   }
-  // 合併已有的 Drive URL（編輯時保留舊照片連結）和新上傳的
-  const allPhotos = [
-    ...pendingPhotos.filter(p => p.startsWith('https://')), // 已是 URL 的保留
-    ...photoUrls
-  ];
+  const allPhotos = photoUrls;
 
   let result;
   if (currentEditSeq !== null) {
