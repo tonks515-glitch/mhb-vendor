@@ -875,6 +875,15 @@ function handlePhoto(e) {
   });
   e.target.value = '';
 }
+function phThumbFallback(imgEl, viewUrl) {
+  const wrap = imgEl.closest('.ph-wrap');
+  const div = document.createElement('div');
+  div.className = 'ph-img';
+  div.style.cssText = 'display:flex;align-items:center;justify-content:center;background:#e8f0fe;border-radius:6px;border:2px solid #1A4A78;cursor:pointer;font-size:11px;color:#1A4A78;text-align:center;padding:4px';
+  div.innerHTML = '📷<br>Drive';
+  div.onclick = () => window.open(viewUrl, '_blank');
+  imgEl.replaceWith(div);
+}
 function renderThumbs() {
   document.getElementById('photoThumbs').innerHTML = pendingPhotos.map((p, i) => {
     const isUploaded = typeof p === 'object' && p.uploaded;
@@ -887,6 +896,12 @@ function renderThumbs() {
       <button class="ph-del" onclick="removePhoto(${i})">✕</button></div>`;
     }
     if (isUploaded && !thumbSrc) {
+      const fidMatch = viewUrl.match(/\/d\/([^/]+)/);
+      const driveThumbUrl = fidMatch ? ('https://drive.google.com/thumbnail?id=' + fidMatch[1] + '&sz=w300') : '';
+      if (driveThumbUrl) {
+        return `<div class="ph-wrap"><img class="ph-img" src="${driveThumbUrl}" onclick="window.open('${viewUrl}','_blank')" style="cursor:pointer" title="點擊到 Drive 看原圖" onerror="phThumbFallback(this,'${viewUrl}')">
+        <button class="ph-del" onclick="removePhoto(${i})">✕</button></div>`;
+      }
       return `<div class="ph-wrap">
         <div class="ph-img" style="display:flex;align-items:center;justify-content:center;background:#e8f0fe;border-radius:6px;border:2px solid #1A4A78;cursor:pointer;font-size:11px;color:#1A4A78;text-align:center;padding:4px" onclick="window.open('${viewUrl}','_blank')">📷<br>Drive</div>
         <button class="ph-del" onclick="removePhoto(${i})">✕</button></div>`;
