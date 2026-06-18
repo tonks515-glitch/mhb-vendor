@@ -897,7 +897,7 @@ function renderThumbs() {
     }
     if (isUploaded && !thumbSrc) {
       const fidMatch = viewUrl.match(/\/d\/([^/]+)/);
-      const driveThumbUrl = fidMatch ? ('https://drive.google.com/thumbnail?id=' + fidMatch[1] + '&sz=w300') : '';
+      const driveThumbUrl = fidMatch ? ('https://lh3.googleusercontent.com/d/' + fidMatch[1] + '=w300') : '';
       if (driveThumbUrl) {
         return `<div class="ph-wrap"><img class="ph-img" src="${driveThumbUrl}" onclick="window.open('${viewUrl}','_blank')" style="cursor:pointer" title="點擊到 Drive 看原圖" onerror="phThumbFallback(this,'${viewUrl}')">
         <button class="ph-del" onclick="removePhoto(${i})">✕</button></div>`;
@@ -1177,6 +1177,14 @@ function renderDesktopTable() {
 // ============================================================
 // MODAL
 // ============================================================
+function mPhotoFallback(imgEl, viewUrl) {
+  const div = document.createElement('div');
+  div.className = 'm-photo';
+  div.style.cssText = 'width:100%;max-width:180px;min-height:90px;display:flex;align-items:center;justify-content:center;background:#e8f0fe;border-radius:7px;border:2px solid #1A4A78;color:#1A4A78;font-size:13px;cursor:pointer';
+  div.innerHTML = '📷<br>點擊看原圖';
+  div.onclick = () => window.open(viewUrl, '_blank');
+  imgEl.replaceWith(div);
+}
 function openModal(seq) {
   currentModalSeq = seq;
   const r = records.find(r => String(r.seq) === String(seq));
@@ -1198,7 +1206,12 @@ function openModal(seq) {
         } else {
           thumb = p; url = p;
         }
-        return `<img class="m-photo" src="${thumb}" onclick="window.open('${url}','_blank')" style="cursor:pointer" title="點擊到 Drive 看原圖">`;
+        let imgSrc = thumb;
+        if (!imgSrc) {
+          const fidMatch = (url||'').match(/\/d\/([^/]+)/);
+          imgSrc = fidMatch ? ('https://lh3.googleusercontent.com/d/' + fidMatch[1] + '=w400') : '';
+        }
+        return `<img class="m-photo" src="${imgSrc}" onclick="window.open('${url}','_blank')" style="cursor:pointer" title="點擊到 Drive 看原圖" onerror="mPhotoFallback(this,'${url}')">`;
       }).join('')}</div>`;
   }
   document.getElementById('mBody').innerHTML = html;
