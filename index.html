@@ -963,7 +963,15 @@ async function saveRecord() {
       }
     }
   }
-  const allPhotos = photoUrls;
+  // 最終防護：絕對不讓 base64 資料寫入 Sheets（base64 太長會超過儲存格限制）
+  const allPhotos = photoUrls.filter(p => {
+    if (typeof p !== 'string') return false;
+    if (p.startsWith('data:image')) {
+      console.warn('攔截到 base64 資料，已排除:', p.substring(0,30));
+      return false;
+    }
+    return true;
+  });
 
   let result;
   if (currentEditSeq !== null) {
