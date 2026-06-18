@@ -1124,15 +1124,33 @@ function renderMobileCards() {
 function renderDesktopTable() {
   const tb = document.getElementById('tableBody');
   tb.innerHTML = filteredRecords.slice(0,500).map((r,i) => `
-    <tr onclick="openModal(${r.seq})" style="cursor:pointer">
+    <tr data-seq="${r.seq}" style="cursor:pointer">
       <td class="tc">${r.seq}${!r.isEmbedded?'<br><span style="font-size:9px;color:var(--accent)">新</span>':''}</td>
       <td style="font-weight:500;color:var(--navy)">${r.vendor}</td>
       <td class="tc">${r.year}</td>
       <td class="tc">${fmtDate(r)}</td>
       <td style="white-space:pre-wrap;font-size:12px">${r.issue}</td>
-      <td><div class="td-s" onclick="this.classList.toggle('exp');event.stopPropagation()">${r.summary||''}</div></td>
-      <td class="tc"><button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();editFromList(${r.seq})" style="padding:3px 7px">✏️</button></td>
+      <td><div class="td-s">${r.summary||''}</div></td>
+      <td class="tc"><button class="btn btn-sm btn-secondary edit-btn" data-seq="${r.seq}" style="padding:3px 7px">✏️</button></td>
     </tr>`).join('');
+
+  // 事件委派：editbutton 優先處理，避免事件冒泡到整列
+  tb.onclick = function(e) {
+    const editBtn = e.target.closest('.edit-btn');
+    if (editBtn) {
+      editFromList(editBtn.dataset.seq);
+      return;
+    }
+    const expandable = e.target.closest('.td-s');
+    if (expandable) {
+      expandable.classList.toggle('exp');
+      return;
+    }
+    const row = e.target.closest('tr');
+    if (row && row.dataset.seq) {
+      openModal(row.dataset.seq);
+    }
+  };
 }
 
 // ============================================================
