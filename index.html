@@ -247,9 +247,15 @@ textarea{resize:vertical;min-height:90px}
       </div>
     </div>
 
-    <div class="form-row">
-      <label>日期（月/日）<span class="req">*</span></label>
-      <input type="text" id="f-date" placeholder="例: 6/10">
+    <div class="form-2col">
+      <div class="form-row">
+        <label>日期（月/日）<span class="req">*</span></label>
+        <input type="text" id="f-date" placeholder="例: 6/10" oninput="autoSummary()">
+      </div>
+      <div class="form-row">
+        <label>施工時間 <span class="req">*</span></label>
+        <input type="text" id="f-time" placeholder="例: 上午約0830-1640" oninput="autoSummary()">
+      </div>
     </div>
 
     <div class="form-row">
