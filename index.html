@@ -749,7 +749,23 @@ function updateTemplates() {
 
 function applyTmpl(idx) {
   const t = (window._tmpls || [])[idx];
-  if (t) { document.getElementById('f-summary').value = t; summaryManuallyEdited = true; showToast('✅ 已套用範本（仍可手動修改施工內容或摘要）'); }
+  if (!t) return;
+  const lines = [];
+  let m; const re = /◎([^\n]+)/g;
+  while ((m = re.exec(t)) !== null) lines.push(m[1].trim());
+  if (!lines.length) { showToast('⚠️ 此範本沒有可套用的施工內容'); return; }
+  lines.forEach(line => {
+    let target = Array.from(document.querySelectorAll('.content-input')).find(i => !i.value.trim());
+    if (!target) {
+      addContentItem();
+      const all = document.querySelectorAll('.content-input');
+      target = all[all.length - 1];
+    }
+    target.value = line;
+  });
+  summaryManuallyEdited = false;
+  autoSummary();
+  showToast('✅ 已套用範本內容（可繼續編輯）');
 }
 
 // ============================================================
