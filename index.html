@@ -291,7 +291,7 @@ textarea{resize:vertical;min-height:90px}
     <div class="form-row">
       <label>摘要（F欄）<span style="font-size:11px;color:var(--g400);font-weight:400"> — 自動產生，不需手動輸入</span></label>
       <div style="position:relative">
-      <textarea id="f-summary" rows="5" readonly style="background:var(--g100);color:var(--g600);cursor:default;font-size:13px;padding-right:38px" placeholder="填寫上方欄位後自動產生..."></textarea>
+      <textarea id="f-summary" rows="5" oninput="summaryManuallyEdited=true" style="background:var(--g100);color:var(--g600);font-size:13px;padding-right:38px" placeholder="填寫上方欄位後自動產生，亦可手動修改..."></textarea>
       <button id="copyBtn" onclick="copySummary()" title="複製摘要" style="position:absolute;top:6px;right:6px;background:rgba(26,74,120,0.08);border:none;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:16px;color:var(--navy);transition:all .2s">⎘</button>
       </div>
       <div class="template-area" id="tmpl-area" style="display:none">
@@ -440,6 +440,7 @@ let gasUrl = localStorage.getItem('miaohui_gas_url') || 'https://script.google.c
 let records = [];          // all records loaded from Sheets
 let filteredRecords = [];
 let currentEditSeq = null;
+let summaryManuallyEdited = false;
 let pendingPhotos = [];
 let currentModalSeq = null;
 let allVendors = [];       // merged: embedded + Sheets vendors
@@ -748,7 +749,7 @@ function updateTemplates() {
 
 function applyTmpl(idx) {
   const t = (window._tmpls || [])[idx];
-  if (t) { document.getElementById('f-summary').value = t; showToast('✅ 已套用範本'); }
+  if (t) { document.getElementById('f-summary').value = t; summaryManuallyEdited = true; showToast('✅ 已套用範本（仍可手動修改施工內容或摘要）'); }
 }
 
 // ============================================================
@@ -926,8 +927,13 @@ async function saveRecord() {
   const issue = document.getElementById('f-issue').value.trim();
   const summary = document.getElementById('f-summary').value.trim();
 
-  if (!vendor || !date || !issue || !summary) {
-    showToast('⚠️ 請填寫廠商、日期、問題敘述及摘要！');
+  const missing = [];
+  if (!vendor) missing.push('廠商名稱');
+  if (!date) missing.push('日期');
+  if (!issue) missing.push('問題敘述');
+  if (!summary) missing.push('摘要');
+  if (missing.length) {
+    showToast('⚠️ 請填寫：' + missing.join('、'));
     return;
   }
 
@@ -1048,6 +1054,7 @@ function clearForm() {
   document.getElementById('f-year').value = ry;
   document.getElementById('f-issue').value = '';
   document.getElementById('f-summary').value = '';
+  summaryManuallyEdited = false;
   pendingPhotos = []; renderThumbs();
   document.getElementById('issue-chips').style.display = 'none';
   document.getElementById('tmpl-area').style.display = 'none';
@@ -1247,6 +1254,7 @@ function editFromList(seq) {
   document.getElementById('f-issue').value = r.issue;
   const sum = r.summary || '';
   document.getElementById('f-summary').value = sum;
+  summaryManuallyEdited = false;
   // 解析摘要填入各欄位
   const timeMatch = sum.match(/1[.．]\s*日期[：:]([^\n]+)/);
   const rawTime = timeMatch ? timeMatch[1] : '';
@@ -1369,6 +1377,7 @@ function renderStats() {
 // TOAST
 // ============================================================
 function autoSummary() {
+  if (summaryManuallyEdited) return;
   const sel = document.getElementById('f-vendor');
   const vendor = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].value : '';
   const year = document.getElementById('f-year').value || '';
@@ -1428,7 +1437,6 @@ function copySummary() {
 }
 function fallbackCopy(txt) {
   const el = document.getElementById('f-summary');
-  el.removeAttribute('readonly');
   el.select();
   el.setSelectionRange(0, 99999);
   try {
@@ -1439,7 +1447,6 @@ function fallbackCopy(txt) {
   } catch(e) {
     showToast('❌ 複製失敗，請手動複製');
   }
-  el.setAttribute('readonly', true);
 }
 
 function saveLastYear() {
