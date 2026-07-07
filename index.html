@@ -657,9 +657,15 @@ function updateIssueChips() {
   const recIssues = [...new Set(records.filter(r => r.vendor === vendor && r.issue).map(r => r.issue))];
   recIssues.forEach(i => { if (!issues.includes(i)) issues.push(i); });
   if (!issues.length) { div.style.display = 'none'; return; }
-  document.getElementById('issue-chips-inner').innerHTML = issues.slice(0, 12).map(i =>
-    `<div class="chip" onclick="selectIssue('${esc(i)}')" title="${esc(i)}">${i.length > 22 ? i.substring(0,22)+'…' : i}</div>`
-  ).join('');
+  const issueList = issues.slice(0, 12);
+  document.getElementById('issue-chips-inner').innerHTML = issueList.map((i, idx) => {
+    const display = i.replace(/\n/g, ' ');
+    const label = display.length > 22 ? display.substring(0, 22) + '…' : display;
+    return `<div class="chip" data-issue-idx="${idx}" title="${esc(display)}">${label}</div>`;
+  }).join('');
+  document.getElementById('issue-chips-inner').querySelectorAll('.chip[data-issue-idx]').forEach(el => {
+    el.addEventListener('click', () => selectIssue(issueList[+el.dataset.issueIdx]));
+  });
   div.style.display = 'block';
 }
 
