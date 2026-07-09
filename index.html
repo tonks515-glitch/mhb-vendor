@@ -1012,11 +1012,12 @@ async function saveRecord() {
       }
     }
   }
-  // 最終防護：絕對不讓 base64 資料寫入 Sheets（base64 太長會超過儲存格限制）
+  // 最終防護：絕對不讓純 base64 資料寫入 Sheets（base64 太長會超過儲存格限制）
+  // 注意：base64|||DriveURL 格式是合法的，不可過濾
   const allPhotos = photoUrls.filter(p => {
     if (typeof p !== 'string') return false;
-    if (p.startsWith('data:image')) {
-      console.warn('攔截到 base64 資料，已排除:', p.substring(0,30));
+    if (p.startsWith('data:image') && !p.includes('|||')) {
+      console.warn('攔截到純 base64 資料，已排除:', p.substring(0,30));
       return false;
     }
     return true;
