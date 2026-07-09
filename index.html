@@ -1031,7 +1031,7 @@ async function saveRecord() {
     });
     if (result.ok) {
       const idx = records.findIndex(r => r.seq === currentEditSeq);
-      if (idx >= 0) records[idx] = { seq: currentEditSeq, vendor, year, date, issue, summary, photos: pendingPhotos };
+      if (idx >= 0) records[idx] = { seq: currentEditSeq, vendor, year, date, issue, summary, photos: allPhotos, created_at: records[idx].created_at || '', isEmbedded: false };
       showToast('✅ 記錄已更新並同步！');
     } else {
       showToast('❌ 更新失敗：' + (result.error || ''));
@@ -1255,6 +1255,7 @@ function openModal(seq) {
       area.appendChild(img);
     });
   }
+  document.getElementById('detailModal').classList.add('open');
 }
 function closeModal() { document.getElementById('detailModal').classList.remove('open'); currentModalSeq = null; }
 function editFromModal() {
