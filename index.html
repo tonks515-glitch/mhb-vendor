@@ -1224,28 +1224,37 @@ function openModal(seq) {
   let html = `<div class="mf-label">問題敘述</div><div class="mf-val">${r.issue}</div>
     <div class="mf-label">摘要</div><div class="mf-val">${r.summary||''}</div>`;
   if (r.photos && r.photos.length) {
-    html += `<div class="mf-label">照片（${r.photos.length}張，點縮圖到 Drive 看原圖）</div>
-      <div class="m-photos">${r.photos.map(p => {
-        let thumb, url;
-        if (typeof p === 'string' && p.includes('|||')) {
-          const si = p.indexOf('|||');
-          thumb = p.substring(0, si);
-          url = p.substring(si + 3);
-        } else if (typeof p === 'object') {
-          thumb = p.thumb || p.base64; url = p.url;
-        } else {
-          thumb = p; url = p;
-        }
-        let imgSrc = thumb;
-        if (!imgSrc) {
-          const fidMatch = (url||'').match(/\/d\/([^/]+)/);
-          imgSrc = fidMatch ? ('https://lh3.googleusercontent.com/d/' + fidMatch[1] + '=w400') : '';
-        }
-        return `<img class="m-photo" src="${imgSrc}" onclick="window.open('${url}','_blank')" style="cursor:pointer" title="點擊到 Drive 看原圖" onerror="mPhotoFallback(this,'${url}')">`;
-      }).join('')}</div>`;
+    html += `<div class="mf-label">照片（${r.photos.length}張，點縮圖到 Drive 看原圖）</div><div class="m-photos" id="mPhotosArea"></div>`;
   }
   document.getElementById('mBody').innerHTML = html;
-  document.getElementById('detailModal').classList.add('open');
+  if (r.photos && r.photos.length) {
+    const area = document.getElementById('mPhotosArea');
+    r.photos.forEach(p => {
+      let thumb, url;
+      if (typeof p === 'string' && p.includes('|||')) {
+        const si = p.indexOf('|||');
+        thumb = p.substring(0, si);
+        url = p.substring(si + 3);
+      } else if (typeof p === 'object') {
+        thumb = p.thumb || p.base64; url = p.url;
+      } else {
+        thumb = p; url = p;
+      }
+      const img = document.createElement('img');
+      img.className = 'm-photo';
+      img.style.cursor = 'pointer';
+      img.title = '點擊到 Drive 看原圖';
+      if (thumb) {
+        img.src = thumb;
+      } else {
+        const fidMatch = (url||'').match(/\/d\/([^/]+)/);
+        img.src = fidMatch ? ('https://lh3.googleusercontent.com/d/' + fidMatch[1] + '=w400') : '';
+      }
+      img.onclick = () => window.open(url, '_blank');
+      img.onerror = () => mPhotoFallback(img, url);
+      area.appendChild(img);
+    });
+  }
 }
 function closeModal() { document.getElementById('detailModal').classList.remove('open'); currentModalSeq = null; }
 function editFromModal() {
