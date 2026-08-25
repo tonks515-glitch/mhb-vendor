@@ -1030,8 +1030,8 @@ async function saveRecord() {
       seq: currentEditSeq, vendor, year, date, issue, summary, photos: allPhotos
     });
     if (result.ok) {
-      const idx = records.findIndex(r => r.seq === currentEditSeq);
-      if (idx >= 0) records[idx] = { seq: currentEditSeq, vendor, year, date, issue, summary, photos: allPhotos, created_at: records[idx].created_at || '', isEmbedded: false };
+      const idx = records.findIndex(r => String(r.seq) === String(currentEditSeq));
+      if (idx >= 0) records[idx] = { seq: Number(currentEditSeq), vendor, year, date, issue, summary, photos: allPhotos, created_at: records[idx].created_at || '', isEmbedded: false };
       showToast('✅ 記錄已更新並同步！');
     } else {
       showToast('❌ 更新失敗：' + (result.error || ''));
@@ -1216,7 +1216,7 @@ function mPhotoFallback(imgEl, viewUrl) {
   imgEl.replaceWith(div);
 }
 function openModal(seq) {
-  currentModalSeq = seq;
+  currentModalSeq = Number(seq);
   const r = records.find(r => String(r.seq) === String(seq));
   if (!r) return;
   document.getElementById('mSeq').textContent = `#${r.seq} ・ ${r.year}/${r.date}`;
@@ -1277,6 +1277,7 @@ function editFromModal() {
   }, 150);
 }
 function editFromList(seq) {
+  seq = Number(seq);
   const r = records.find(r => String(r.seq) === String(seq));
   if (!r) return;
   populateVendorSelectBox();
