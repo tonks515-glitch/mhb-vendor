@@ -1051,6 +1051,7 @@ async function saveRecord() {
   btn.disabled = false;
 
   if (result && result.ok) {
+    // 先用本地補丁資料立即顯示，避免畫面空白等待
     updateHeader();
     populateVendorFilter();
     applyFilter();
@@ -1060,6 +1061,9 @@ async function saveRecord() {
     clearForm();
     // 自動切到記錄頁顯示最新資料
     switchTab('list');
+    // 新增/編輯後 GAS 端已重新依日期排序，重新從 Sheets 同步，
+    // 確保手機/電腦畫面清單順序與試算表排序後的結果一致（不再只靠本地補丁的原地更新）
+    syncFromSheets();
   }
 }
 
