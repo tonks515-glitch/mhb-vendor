@@ -445,6 +445,7 @@ let pendingPhotos = [];
 let currentModalSeq = null;
 let allVendors = [];       // merged: embedded + Sheets vendors
 let isSyncing = false;
+const HIST_MAX_SEQ = HIST_DATA.reduce((m, r) => Math.max(m, Number(r.i) || 0), 0);
 
 // ============================================================
 // INIT
@@ -508,7 +509,9 @@ function syncFromSheets() {
       issue: r.issue, summary: r.summary,
       photos: r.photos || [],
       created_at: r.created_at || '',
-      isEmbedded: !(r.created_at && r.created_at.trim() !== '')
+      // 「歷史資料」只限內建歷史範圍內(序號 <= 內建最大序號)且沒有建立時間的舊紀錄；
+      // 之後新增的紀錄(序號更大)一律視為可編輯、可刪除，不再依建立時間欄位是否有值判斷
+      isEmbedded: (Number(r.seq) <= HIST_MAX_SEQ) && !(r.created_at && String(r.created_at).trim() !== '')
     }));
 
     if (sheetRecs.length > 0) {
