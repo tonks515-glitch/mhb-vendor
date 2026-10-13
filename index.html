@@ -517,7 +517,16 @@ function syncFromSheets() {
     if (sheetRecs.length > 0) {
       // Use Sheets data as authoritative
       records = sheetRecs;
-      setSyncStatus('ok', `已同步，共 ${records.length} 筆記錄 ✓`);
+      // 偵測序號重複：重複序號的記錄無法安全編輯/刪除（會落在第一筆），需先在試算表選單執行「重新編號」
+      const seqCnt = {};
+      records.forEach(r => { seqCnt[r.seq] = (seqCnt[r.seq] || 0) + 1; });
+      const dupKeys = Object.keys(seqCnt).filter(k => seqCnt[k] > 1);
+      if (dupKeys.length) {
+        const dupRows = dupKeys.reduce((s, k) => s + seqCnt[k], 0);
+        setSyncStatus('warn', `已同步 ${records.length} 筆；有 ${dupKeys.length} 組序號重複（共 ${dupRows} 列），這些記錄暫時無法編輯/刪除，請到試算表選單執行「重新編號」`);
+      } else {
+        setSyncStatus('ok', `已同步，共 ${records.length} 筆記錄 ✓`);
+      }
     } else {
       // Sheets is empty - keep embedded data
       setSyncStatus('ok', `Sheets 尚無記錄，顯示歷史資料共 ${records.length} 筆`);
@@ -948,19 +957,36 @@ async function saveRecord() {
   const vendor = vEl.options[vEl.selectedIndex] ? vEl.options[vEl.selectedIndex].value : '';
   const year = parseInt(document.getElementById('f-year').value);
   saveLastYear();
-  const date = document.getElementById('f-date').value.trim();
+  const dateInput = document.getElementById('f-date').value.trim();
   const issue = document.getElementById('f-issue').value.trim();
   const summary = document.getElementById('f-summary').value.trim();
 
   const missing = [];
   if (!vendor) missing.push('廠商名稱');
-  if (!date) missing.push('日期');
+  if (!(year >= 2000 && year <= 2099)) missing.push('年度');
+  if (!dateInput) missing.push('日期');
   if (!issue) missing.push('問題敘述');
   if (!summary) missing.push('摘要');
   if (missing.length) {
     showToast('⚠️ 請填寫：' + missing.join('、'));
     return;
   }
+
+  // 日期檢查：格式、是否真實存在、年份是否與年度欄相同；通過後統一存成「M/D」
+  const pd = parseInputDate(dateInput);
+  if (!pd) { showToast('⚠️ 日期格式不正確，請輸入「月/日」，例：6/10'); return; }
+  if (pd.y && pd.y !== year) { showToast('⚠️ 日期的年份(' + pd.y + ')與年度欄(' + year + ')不同，請修正'); return; }
+  if (!isValidYMD(year, pd.m, pd.d)) { showToast('⚠️ ' + year + ' 年沒有 ' + pd.m + '/' + pd.d + ' 這一天，請確認日期'); return; }
+  // 摘要的「1. 日期：」行必須與年度欄、日期欄一致，避免日期欄與摘要日期不同
+  const sdl = parseSummaryDateLine(summary);
+  if (sdl) {
+    const sy = sdl.y || year;
+    if (sy !== year || sdl.m !== pd.m || sdl.d !== pd.d) {
+      showToast('⚠️ 摘要的日期行(' + sy + '/' + sdl.m + '/' + sdl.d + ')與日期欄(' + year + '/' + pd.m + '/' + pd.d + ')不一致，請修正後再儲存');
+      return;
+    }
+  }
+  const date = pd.m + '/' + pd.d;
 
   const btn = document.querySelector('[onclick="saveRecord()"]') || document.querySelector('.btn-primary');
   btn.textContent = '⏳ 儲存中...';
@@ -1030,7 +1056,7 @@ async function saveRecord() {
   if (currentEditSeq !== null) {
     // UPDATE
     result = await gasPost('updateRecord', {
-      seq: currentEditSeq, vendor, year, date, issue, summary, photos: allPhotos
+      seq: currentEditSeq, vendor, year, date, issue, summary, photos: allPhotos, clearPhotos: allPhotos.length === 0
     });
     if (result.ok) {
       const idx = records.findIndex(r => String(r.seq) === String(currentEditSeq));
@@ -1116,13 +1142,9 @@ function populateVendorFilter() {
 
 // 統一日期顯示格式：yyyy/MM/dd
 function fmtDate(r) {
-  const d = String(r.date || '');
-  // 已是 yyyy/MM/dd
-  if (/^\d{4}\/\d{2}\/\d{2}$/.test(d)) return d;
-  // M/D 格式
-  const m = d.match(/^(\d{1,2})\/(\d{1,2})$/);
-  if (m) return r.year + '/' + String(m[1]).padStart(2,'0') + '/' + String(m[2]).padStart(2,'0');
-  return d;
+  const pd = parseInputDate(r.date);
+  if (pd) return (pd.y || r.year) + '/' + String(pd.m).padStart(2,'0') + '/' + String(pd.d).padStart(2,'0');
+  return String(r.date || '');
 }
 
 // 統一轉成 yyyyMMDD 整數供排序用
@@ -1226,7 +1248,7 @@ function openModal(seq) {
   currentModalSeq = Number(seq);
   const r = records.find(r => String(r.seq) === String(seq));
   if (!r) return;
-  document.getElementById('mSeq').textContent = `#${r.seq} ・ ${r.year}/${r.date}`;
+  document.getElementById('mSeq').textContent = `#${r.seq} ・ ${fmtDate(r)}`;
   document.getElementById('mVendor').textContent = r.vendor;
   let html = `<div class="mf-label">問題敘述</div><div class="mf-val">${r.issue}</div>
     <div class="mf-label">摘要</div><div class="mf-val">${r.summary||''}</div>`;
@@ -1291,15 +1313,17 @@ function editFromList(seq) {
   const vsel = document.getElementById('f-vendor');
   for (let o of vsel.options) { if (o.value === r.vendor) { o.selected = true; break; } }
   document.getElementById('f-year').value = r.year;
-  document.getElementById('f-date').value = r.date;
+  const pdE = parseInputDate(r.date);
+  document.getElementById('f-date').value = (pdE && (!pdE.y || pdE.y === Number(r.year))) ? (pdE.m + '/' + pdE.d) : (r.date || '');
   document.getElementById('f-issue').value = r.issue;
   const sum = r.summary || '';
   document.getElementById('f-summary').value = sum;
-  summaryManuallyEdited = false;
+  // 開啟既有記錄＝摘要視為已手動編輯：之後改日期/時間只會更新摘要裡「1. 日期：」那一行，
+  // 不會用欄位重新組合整份摘要（否則「4. 後續處理」等段落、沒有日期行的舊摘要都會被洗掉）
+  summaryManuallyEdited = true;
   // 解析摘要填入各欄位
-  const timeMatch = sum.match(/1[.．]\s*日期[：:]([^\n]+)/);
-  const rawTime = timeMatch ? timeMatch[1] : '';
-  const timeOnly = rawTime.replace(/^[\d]{4}\/[\d]{1,2}\/[\d]{1,2}\s*/, '').replace(/^[\d]{1,2}\/[\d]{1,2}\s*/, '').trim();
+  const sdE = parseSummaryDateLine(sum);
+  const timeOnly = sdE ? sdE.rest : '';
   const staffMatch = sum.match(/2[.．]\s*廠商[：:]([^\n]+)/);
   const rawStaff = staffMatch ? staffMatch[1] : '';
   const staffOnly = rawStaff.replace(r.vendor, '').trim();
@@ -1309,6 +1333,9 @@ function editFromList(seq) {
   document.getElementById('f-time').value = timeOnly;
   document.getElementById('f-staff').value = staffOnly;
   const ci2 = document.getElementById('content-items');
+  if (contentLines.length === 0) {
+    ci2.innerHTML = '<div class="content-item" style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start"><span style="color:var(--navy);font-weight:700;padding-top:9px;flex-shrink:0">◎</span><input type="text" class="content-input" placeholder="輸入施工內容..." oninput="autoSummary()" style="flex:1"><button class="btn btn-secondary btn-sm" onclick="removeContentItem(this)" style="flex-shrink:0;margin-top:4px">✕</button></div>';
+  }
   if (contentLines.length > 0) {
     ci2.innerHTML = contentLines.map(line =>
       '<div class="content-item" style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start"><span style="color:var(--navy);font-weight:700;padding-top:9px;flex-shrink:0">◎</span><input type="text" class="content-input" value="' + line.replace(/"/g, '&quot;') + '" oninput="autoSummary()" style="flex:1"><button class="btn btn-secondary btn-sm" onclick="removeContentItem(this)" style="flex-shrink:0;margin-top:4px">✕</button></div>'
@@ -1350,10 +1377,13 @@ async function deleteRecord() {
   if (!confirm(`確定刪除 #${r.seq} ${r.vendor} 的記錄？`)) return;
   const result = await gasPost('deleteRecord', { seq: r.seq });
   if (result.ok) {
-    records = records.filter(x => String(x.seq) !== String(currentModalSeq));
+    // 只移除第一筆相符的（與 GAS 端行為一致），再重新同步，以試算表為準
+    const di = records.findIndex(x => String(x.seq) === String(currentModalSeq));
+    if (di >= 0) records.splice(di, 1);
     updateHeader(); closeModal();
     if (document.getElementById('pane-list').classList.contains('active')) applyFilter();
     showToast('🗑️ 記錄已刪除');
+    syncFromSheets();
   } else {
     showToast('❌ 刪除失敗：' + (result.error||''));
   }
@@ -1406,7 +1436,7 @@ function renderStats() {
     <div class="bar-v">${c}</div></div>`).join('');
   const mc = {}; const now = new Date();
   for (let i=11;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);mc[`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}`]=0;}
-  records.forEach(r=>{if(!r.date)return;const p=String(r.date).split('/');if(p.length<2)return;const k=`${r.year}/${String(parseInt(p[0])).padStart(2,'0')}`;if(k in mc)mc[k]++;});
+  records.forEach(r=>{if(!r.date)return;const pd=parseInputDate(r.date);if(!pd)return;const k=`${pd.y||r.year}/${String(pd.m).padStart(2,'0')}`;if(k in mc)mc[k]++;});
   const mm=Math.max(1,...Object.values(mc));
   document.getElementById('monthChart').innerHTML=Object.entries(mc).map(([m,c])=>
     `<div class="bar-row"><div class="bar-l">${m}</div>
@@ -1417,20 +1447,62 @@ function renderStats() {
 // ============================================================
 // TOAST
 // ============================================================
-// 即使摘要已被手動編輯過，日期/年度欄位一旦變動，仍強制同步更新摘要中的「1. 日期：」那一行，
-// 避免「日期」欄位與摘要內文日期脫勾（只替換該行文字，不影響其他手動修改的內容）
+// ============================================================
+// 日期工具（v7）：輸入解析、驗證、摘要「1. 日期：」行的解析
+// ============================================================
+function toHalf(s) {
+  return String(s == null ? '' : s).replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+    .replace(/／/g, '/').replace(/：/g, ':').replace(/－/g, '-');
+}
+// 解析使用者輸入的日期：「M/D」或「yyyy/M/D」（也接受 - . 分隔與全形數字）；無法解析回傳 null
+function parseInputDate(v) {
+  const s = toHalf(v).trim();
+  let m = s.match(/^(\d{4})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{1,2})$/);
+  if (m) return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
+  m = s.match(/^(\d{1,2})\s*[\/\-.]\s*(\d{1,2})$/);
+  if (m) return { y: 0, m: Number(m[1]), d: Number(m[2]) };
+  return null;
+}
+// 檢查是不是真實存在的日期（例如 2025/2/29、9/31 都不存在）
+function isValidYMD(y, m, d) {
+  if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return false;
+  if (!y) return true;
+  const t = new Date(y, m - 1, d);
+  return t.getFullYear() === y && t.getMonth() === m - 1 && t.getDate() === d;
+}
+// 摘要裡「1. 日期：」那一行：取出 {prefix, y, m, d, rest}，rest 是日期之後的文字（例如時間）；找不到或看不懂回傳 null
+const SUMMARY_DATE_LINE_RE = /(1[.．]\s*日期[：:]\s*)([^\n]*)/;
+function parseSummaryDateLine(summary) {
+  const mm = String(summary || '').match(SUMMARY_DATE_LINE_RE);
+  if (!mm) return null;
+  const orig = mm[2];
+  const dm = toHalf(orig).match(/^(?:(\d{4})\s*[\/年.\-]\s*)?(\d{1,2})\s*[\/月.\-:]\s*(\d{1,2})\s*日?\s*/);
+  if (!dm) return null;
+  return { prefix: mm[1], y: dm[1] ? Number(dm[1]) : 0, m: Number(dm[2]), d: Number(dm[3]), rest: orig.slice(dm[0].length).trim() };
+}
+// 依「年度欄」與「日期欄」組出摘要用的日期文字 yyyy/M/D；日期欄還在輸入中(無法解析)時照原樣接上
+function buildDateText(yearVal, dateVal) {
+  const pd = parseInputDate(dateVal);
+  const yr = String(yearVal || '').trim();
+  if (pd) { const yy = pd.y || yr; return (yy ? yy + '/' : '') + pd.m + '/' + pd.d; }
+  return (yr ? yr + '/' : '') + String(dateVal || '').trim();
+}
+// 即使摘要已被手動編輯過（或是開啟舊記錄編輯），日期/年度/時間欄位一旦變動，仍同步更新摘要中的「1. 日期：」那一行，
+// 只替換這一行：日期部分依欄位更新，時間文字優先用時間欄，時間欄空白時保留原本行內的時間，其餘內容完全不動
 function syncSummaryDateLine() {
-  const summaryEl = document.getElementById('f-summary');
-  if (!summaryEl || !summaryEl.value) return;
-  const year = document.getElementById('f-year').value || '';
-  const date = document.getElementById('f-date').value || '';
+  const el = document.getElementById('f-summary');
+  if (!el || !el.value) return;
+  const dateVal = (document.getElementById('f-date').value || '').trim();
+  if (!dateVal) return;
+  const cur = parseSummaryDateLine(el.value);
+  if (!cur) return; // 摘要裡沒有可辨識的日期行，不動
+  const yearVal = document.getElementById('f-year').value || '';
   const timeEl = document.getElementById('f-time');
-  const time = timeEl ? timeEl.value : '';
-  let newLine = '1. 日期：' + (year ? year + '/' : '') + date;
-  if (time) newLine += ' ' + time;
-  if (/1[.．]\s*日期[：:][^\n]*/.test(summaryEl.value)) {
-    summaryEl.value = summaryEl.value.replace(/1[.．]\s*日期[：:][^\n]*/, newLine);
-  }
+  const fTime = timeEl ? timeEl.value.trim() : '';
+  const timeTxt = fTime || cur.rest;
+  let newLine = cur.prefix + buildDateText(yearVal, dateVal);
+  if (timeTxt) newLine += ' ' + timeTxt;
+  el.value = el.value.replace(SUMMARY_DATE_LINE_RE, function () { return newLine; });
 }
 function autoSummary() {
   if (summaryManuallyEdited) { syncSummaryDateLine(); return; }
@@ -1448,7 +1520,7 @@ function autoSummary() {
   if (!issue && !vendor) { document.getElementById('f-summary').value = ''; return; }
   const nl = '\n';
   let s = (issue || '') + '：' + nl;
-  s += '1. 日期：' + (year ? year + '/' : '') + date;
+  s += '1. 日期：' + buildDateText(year, date);
   if (time) s += ' ' + time;
   s += nl + '2. 廠商：' + vendor;
   if (staff) s += staff;
@@ -1550,7 +1622,7 @@ function buildZip(files){const ls=[],cs=[];let off=0;files.forEach(([n,d])=>{con
 function xesc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
 
 function buildXlsx(recs) {
-  const sorted = recs.slice().sort((a,b)=>{if(a.year!==b.year)return a.year-b.year;const pa=String(a.date).split('/').map(Number),pb=String(b.date).split('/').map(Number);return((pa[0]||0)*100+(pa[1]||0))-((pb[0]||0)*100+(pb[1]||0));});
+  const sorted = recs.slice().sort((a,b)=>(toSortInt(a)-toSortInt(b))||(Number(a.seq)-Number(b.seq)));
   const NAVY='FF1A4A78',WHITE='FFFFFFFF',STRIPE='FFF2F6FC';
   const stylesXml=`<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="13"/><name val="Calibri"/></font><font><sz val="13"/><b/><name val="Calibri"/><color rgb="${WHITE}"/></font><font><sz val="14"/><b/><name val="Calibri"/><color rgb="${WHITE}"/></font></fonts><fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="${NAVY}"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="${STRIPE}"/></patternFill></fill></fills><borders count="2"><border><left style="medium"><color rgb="${NAVY}"/></left><right style="medium"><color rgb="${NAVY}"/></right><top style="medium"><color rgb="${NAVY}"/></top><bottom style="medium"><color rgb="${NAVY}"/></bottom></border><border><left style="thin"><color rgb="FF999999"/></left><right style="thin"><color rgb="FF999999"/></right><top style="thin"><color rgb="FF999999"/></top><bottom style="thin"><color rgb="FF999999"/></bottom></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0"><alignment wrapText="1" vertical="top" horizontal="left"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0"><alignment wrapText="1" vertical="top" horizontal="left"/></xf><xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0"><alignment vertical="top" horizontal="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0"><alignment vertical="top" horizontal="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0"><alignment horizontal="center" vertical="center"/></xf></cellXfs></styleSheet>`;
   const HDRS=['序號','廠商','年度','日期','問題敘述','摘要'];
