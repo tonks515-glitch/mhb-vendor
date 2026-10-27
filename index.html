@@ -291,7 +291,7 @@ textarea{resize:vertical;min-height:90px}
     <div class="form-row">
       <label>摘要（F欄）<span style="font-size:11px;color:var(--g400);font-weight:400"> — 自動產生，不需手動輸入</span></label>
       <div style="position:relative">
-      <textarea id="f-summary" rows="5" oninput="summaryManuallyEdited=true" style="background:var(--g100);color:var(--g600);font-size:13px;padding-right:38px" placeholder="填寫上方欄位後自動產生，亦可手動修改..."></textarea>
+      <textarea id="f-summary" rows="5" oninput="summaryManuallyEdited=true;editSync=null" style="background:var(--g100);color:var(--g600);font-size:13px;padding-right:38px" placeholder="填寫上方欄位後自動產生，亦可手動修改..."></textarea>
       <button id="copyBtn" onclick="copySummary()" title="複製摘要" style="position:absolute;top:6px;right:6px;background:rgba(26,74,120,0.08);border:none;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:16px;color:var(--navy);transition:all .2s">⎘</button>
       </div>
       <div class="template-area" id="tmpl-area" style="display:none">
@@ -441,6 +441,7 @@ let records = [];          // all records loaded from Sheets
 let filteredRecords = [];
 let currentEditSeq = null;
 let summaryManuallyEdited = false;
+let editSync = null; // 編輯舊記錄時的「分段同步」基準；null＝不分段同步
 let pendingPhotos = [];
 let currentModalSeq = null;
 let allVendors = [];       // merged: embedded + Sheets vendors
@@ -781,7 +782,7 @@ function applyTmpl(idx) {
     }
     target.value = line;
   });
-  summaryManuallyEdited = false;
+  summaryManuallyEdited = false; editSync = null;
   autoSummary();
   showToast('✅ 已套用範本內容（可繼續編輯）');
 }
@@ -1110,7 +1111,7 @@ function clearForm() {
   document.getElementById('f-year').value = ry;
   document.getElementById('f-issue').value = '';
   document.getElementById('f-summary').value = '';
-  summaryManuallyEdited = false;
+  summaryManuallyEdited = false; editSync = null;
   pendingPhotos = []; renderThumbs();
   document.getElementById('issue-chips').style.display = 'none';
   document.getElementById('tmpl-area').style.display = 'none';
@@ -1341,6 +1342,15 @@ function editFromList(seq) {
       '<div class="content-item" style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start"><span style="color:var(--navy);font-weight:700;padding-top:9px;flex-shrink:0">◎</span><input type="text" class="content-input" value="' + line.replace(/"/g, '&quot;') + '" oninput="autoSummary()" style="flex:1"><button class="btn btn-secondary btn-sm" onclick="removeContentItem(this)" style="flex-shrink:0;margin-top:4px">✕</button></div>'
     ).join('');
   }
+  // 分段同步基準：記住開啟當下的原摘要與各欄位值，之後欄位改動只替換摘要中對應的那一段
+  editSync = {
+    orig: sum,
+    issue: (document.getElementById('f-issue').value || '').trim(),
+    vendor: vsel.value || '',
+    staff: (document.getElementById('f-staff').value || '').trim(),
+    items: contentLines.slice(),
+    warned: false
+  };
   // 舊記錄照片是 Drive URL，標記為已上傳，不重新上傳
   pendingPhotos = (r.photos||[]).map(p => {
     if (typeof p === 'string' && p.includes('|||')) {
@@ -1504,8 +1514,71 @@ function syncSummaryDateLine() {
   if (timeTxt) newLine += ' ' + timeTxt;
   el.value = el.value.replace(SUMMARY_DATE_LINE_RE, function () { return newLine; });
 }
+// 編輯舊記錄：欄位改動時，從「原摘要」出發，只替換有改動欄位對應的那一段（標題／2. 廠商／◎施工內容），其餘原文不動；
+// 欄位改回原值時該段自動還原為原文。找不到對應段落（舊格式）時不改摘要，並提示一次請直接在摘要框修改。
+function syncSummarySections() {
+  const el = document.getElementById('f-summary');
+  const b = editSync;
+  if (!el || !b) return;
+  const g = id => { const x = document.getElementById(id); return x ? x.value : ''; };
+  const issue = g('f-issue').trim();
+  const vsel = document.getElementById('f-vendor');
+  const vendor = (vsel && vsel.value) || '';
+  const staff = g('f-staff').trim();
+  let items = Array.from(document.querySelectorAll('.content-input')).map(i => i.value.trim()).filter(Boolean);
+  if (items.length === 0) items = [''];
+  let lines = b.orig.split('\n');
+  let unsupported = false;
+  // 1) 標題（第一個非空行，結尾為「：」且不是「1. …」）
+  if (issue !== b.issue && issue) {
+    const ti = lines.findIndex(l => l.trim() !== '');
+    const tm = ti >= 0 ? lines[ti].match(/^(?!\s*\d+[.．])(.*)([：:])\s*(\r?)$/) : null;
+    if (tm) lines[ti] = issue + tm[2] + tm[3]; else unsupported = true;
+  }
+  // 2) 廠商行
+  if (vendor !== b.vendor || staff !== b.staff) {
+    const vi = lines.findIndex(l => /^\s*2[.．]\s*廠商[：:]/.test(l));
+    if (vi >= 0) {
+      const vm = lines[vi].match(/^(\s*2[.．]\s*廠商[：:])/);
+      const cr = /\r$/.test(lines[vi]) ? '\r' : '';
+      const restOrig = lines[vi].slice(vm[1].length).replace(/\r$/, '');
+      if (vendor === b.vendor && restOrig.endsWith(b.staff)) {
+        // 廠商沒換：只替換行尾的「廠商人員」部分，原本的廠商名稱寫法不動
+        lines[vi] = vm[1] + restOrig.slice(0, restOrig.length - b.staff.length) + staff + cr;
+      } else if (vendor) {
+        lines[vi] = vm[1] + vendor + staff + cr;
+      } else unsupported = true;
+    } else unsupported = true;
+  }
+  // 3) 施工內容（◎ 行）：逐項比對，只改有變動的項目；多出的接在最後一個 ◎ 後面；減少的從尾端移除
+  const same = items.length === b.items.length && items.every((t, i) => t === b.items[i]);
+  if (!same) {
+    const idxs = [];
+    lines.forEach((l, i) => { if (/^\s*◎/.test(l)) idxs.push(i); });
+    let anchor = idxs.length ? idxs[idxs.length - 1] : lines.findIndex(l => /^\s*3[.．]\s*內容[：:]/.test(l));
+    if (anchor < 0) {
+      unsupported = true;
+    } else {
+      const n = Math.min(idxs.length, items.length);
+      for (let k = 0; k < n; k++) {
+        if (items[k] !== b.items[k]) lines[idxs[k]] = '◎' + items[k] + (/\r$/.test(lines[idxs[k]]) ? '\r' : '');
+      }
+      if (items.length > idxs.length) {
+        lines.splice.apply(lines, [anchor + 1, 0].concat(items.slice(idxs.length).map(t => '◎' + t)));
+      } else if (items.length < idxs.length) {
+        for (let k = idxs.length - 1; k >= items.length; k--) lines.splice(idxs[k], 1);
+      }
+    }
+  }
+  if (unsupported) {
+    if (!b.warned) { b.warned = true; showToast('⚠️ 此記錄摘要格式較舊，部分欄位無法自動同步，請直接在摘要框修改'); }
+    // 仍套用其餘能同步的段落
+  }
+  const out = lines.join('\n');
+  if (el.value !== out) el.value = out;
+}
 function autoSummary() {
-  if (summaryManuallyEdited) { syncSummaryDateLine(); return; }
+  if (summaryManuallyEdited) { if (editSync) syncSummarySections(); syncSummaryDateLine(); return; }
   const sel = document.getElementById('f-vendor');
   const vendor = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].value : '';
   const year = document.getElementById('f-year').value || '';
